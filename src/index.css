@@ -77,3 +77,84 @@ body {
 .module-card:hover .module-icon {
     @apply bg-blue-700 text-white;
 }
+
+/* =========================================
+   RESERVAS: PANEL DE NUEVA RESERVA
+   Se abre como la página de un libro
+========================================= */
+
+@keyframes abrirPaginaLibro {
+    0% {
+        opacity: 0;
+        transform: rotateY(-72deg) translateZ(-60px);
+    }
+    60% {
+        opacity: 1;
+    }
+    100% {
+        opacity: 1;
+        transform: rotateY(0deg) translateZ(0);
+    }
+}
+
+@keyframes desvanecerSombraLibro {
+    0% {
+        opacity: 0.45;
+    }
+    100% {
+        opacity: 0;
+    }
+}
+
+.reserva-libro {
+    perspective: 1800px;
+}
+
+.reserva-libro-pagina {
+    position: relative;
+    transform-origin: left center;
+    animation: abrirPaginaLibro 0.8s cubic-bezier(0.2, 0.9, 0.25, 1) both;
+    will-change: transform, opacity;
+}
+
+/* Lomo del libro pegado al borde izquierdo de la página */
+.reserva-libro-pagina::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 0.5rem;
+    border-radius: 1rem 0 0 1rem;
+    background: linear-gradient(to right, #0F172A, #1E3A8A 78%, rgba(30, 58, 138, 0.25));
+    pointer-events: none;
+    z-index: 11;
+}
+
+/* Sombra del pliegue que se desvanece al terminar de abrir la página */
+.reserva-libro-pagina::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    border-radius: inherit;
+    background: linear-gradient(
+        to right,
+        rgba(15, 23, 42, 0.5),
+        rgba(15, 23, 42, 0.1) 38%,
+        rgba(15, 23, 42, 0) 62%
+    );
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+    animation: desvanecerSombraLibro 0.95s ease-out 0.1s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reserva-libro-pagina,
+    .reserva-libro-pagina::after {
+        animation: none;
+    }
+}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -63,6 +63,19 @@ const Reservas = ({ onVerReservas }) => {
             .toLocaleLowerCase("es")
             .includes(busquedaCliente.trim().toLocaleLowerCase("es"))
     );
+
+    const formularioRef = useRef(null);
+
+    // Al abrir el formulario de nueva reserva, lleva la vista hasta él
+    // para que se vea cómo se despliega la "página" del libro.
+    useEffect(() => {
+        if (mostrarFormulario && habitacionSeleccionada) {
+            formularioRef.current?.scrollIntoView?.({
+                behavior: "smooth",
+                block: "start",
+            });
+        }
+    }, [mostrarFormulario, habitacionSeleccionada]);
 
     const buscar = async (e) => {
         e.preventDefault();
@@ -519,10 +532,18 @@ const Reservas = ({ onVerReservas }) => {
             )}
 
             {mostrarFormulario && habitacionSeleccionada && (
-                <section className="mt-6 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                <div
+                    ref={formularioRef}
+                    key={habitacionSeleccionada.id_habitacion}
+                    className="reserva-libro scroll-mt-24 mt-6"
+                >
+                    <section className="reserva-libro-pagina overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-lg">
                     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 p-5">
                         <div>
-                            <h3 className="text-lg font-bold text-slate-900">Nueva reserva</h3>
+                            <h3 className="text-lg font-bold text-slate-900">
+                                <i className="bi bi-journal-bookmark mr-2 text-blue-700"></i>
+                                Nueva reserva
+                            </h3>
                             <p className="mt-1 text-sm text-slate-500">
                                 Habitación {habitacionSeleccionada.numero} · {fecha(fEntrada)} al {fecha(fSalida)} · {huespedes} huésped(es)
                             </p>
@@ -850,7 +871,8 @@ const Reservas = ({ onVerReservas }) => {
                             </div>
                         </form>
                     ) : null}
-                </section>
+                    </section>
+                </div>
             )}
 
             {reservaRegistrada && (
