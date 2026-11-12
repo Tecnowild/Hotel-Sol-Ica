@@ -26,12 +26,6 @@ const obtenerPermisosUsuario = async (idUsuario) => {
         throw errorAsignaciones;
     }
 
-    if ((asignaciones || []).length > 1) {
-        throw new Error(
-            `El usuario ${idUsuario} tiene más de un rol activo. Debe conservar solo uno.`
-        );
-    }
-
     const idsRolesAsignados = [...new Set((asignaciones || []).map((fila) => fila.id_rol))];
     if (idsRolesAsignados.length === 0) {
         return { roles: [], modulos: [] };
@@ -47,7 +41,17 @@ const obtenerPermisosUsuario = async (idUsuario) => {
         throw errorRoles;
     }
 
-    const rol = (roles || [])[0];
+    const rolesActivos = roles || [];
+    const administradores = rolesActivos.filter(
+        (rol) => normalizarRol(rol.n_rol) === "ADMINISTRADOR"
+    );
+    if (rolesActivos.length > 1 && administradores.length === 0) {
+        throw new Error(
+            `El usuario ${idUsuario} tiene más de un rol activo. Un administrador debe corregir sus asignaciones.`
+        );
+    }
+
+    const rol = administradores[0] || rolesActivos[0];
     if (!rol) {
         return { roles: [], modulos: [] };
     }

@@ -221,13 +221,6 @@ const obtenerAsignacionesActivas = async (supabase, idUsuario) => {
         .eq("vigente", "1")
         .eq("estado", "1");
     asegurarResultado(error);
-    if ((data || []).length > 1) {
-        const errorMultiple = new Error(
-            "Este usuario tiene más de un rol vigente. Corrige sus asignaciones antes de editarlo."
-        );
-        errorMultiple.status = 409;
-        throw errorMultiple;
-    }
     return data || [];
 };
 
@@ -267,15 +260,26 @@ const listarUsuarios = async ({ pagina = 1, pageSize = 25, busqueda = "" } = {})
     const usuarios = data || [];
     const ids = usuarios.map((usuario) => usuario.id_usuario);
     let asignaciones = [];
+    let idRolAdmin = null;
     if (ids.length) {
-        const { data: filas, error: errorAsignaciones } = await supabase
-            .from("usuario_rol")
-            .select("id_usuario,id_rol")
-            .in("id_usuario", ids)
-            .eq("vigente", "1")
-            .eq("estado", "1");
-        asegurarResultado(errorAsignaciones);
-        asignaciones = filas || [];
+        const [consultaAsignaciones, consultaAdmin] = await Promise.all([
+            supabase
+                .from("usuario_rol")
+                .select("id_usuario,id_rol")
+                .in("id_usuario", ids)
+                .eq("vigente", "1")
+                .eq("estado", "1"),
+            supabase
+                .from("rol")
+                .select("id_rol")
+                .eq("estado", "1")
+                .ilike("n_rol", "ADMINISTRADOR")
+                .maybeSingle()
+        ]);
+        asegurarResultado(consultaAsignaciones.error);
+        asegurarResultado(consultaAdmin.error);
+        asignaciones = consultaAsignaciones.data || [];
+        idRolAdmin = consultaAdmin.data?.id_rol ?? null;
     }
 
     return {
@@ -283,14 +287,14 @@ const listarUsuarios = async ({ pagina = 1, pageSize = 25, busqueda = "" } = {})
             const asignacionesUsuario = asignaciones.filter(
                 (asignacion) => String(asignacion.id_usuario) === String(usuario.id_usuario)
             );
-            if (asignacionesUsuario.length > 1) {
-                const errorMultiple = new Error(
-                    `El usuario ${usuario.logeo} tiene más de un rol vigente. Corrige sus asignaciones antes de continuar.`
-                );
-                errorMultiple.status = 409;
-                throw errorMultiple;
-            }
-            return { ...usuario, id_rol: asignacionesUsuario[0]?.id_rol ?? null };
+            const rolAdministrador = asignacionesUsuario.find(
+                (asignacion) => String(asignacion.id_rol) === String(idRolAdmin)
+            );
+            return {
+                ...usuario,
+                id_rol: (rolAdministrador || asignacionesUsuario[0])?.id_rol ?? null,
+                tieneRolesDuplicados: asignacionesUsuario.length > 1
+            };
         }),
         total: count || 0,
         pagina: numeroPagina,
@@ -419,6 +423,27 @@ const actualizarUsuario = async (idEntrada, entrada) => {
     }
 
     if (asignaciones.length) {
+        const asignacionElegida = asignaciones.find(
+            (asignacion) => String(asignacion.id_rol) === String(datos.id_rol)
+        ) || asignaciones[0];
+        const otrasAsignaciones = asignaciones.filter(
+            (asignacion) => asignacion.id_usuariorol !== asignacionElegida.id_usuariorol
+        );
+
+        for (const asignacion of otrasAsignaciones) {
+            const { error: errorDesactivacion } = await supabase
+                .from("usuario_rol")
+                .update({
+                    vigente: "0",
+                    estado: "0",
+                    usumod: AUDITORIA.usuario,
+                    pcmod: AUDITORIA.pc,
+                    fecmod: fechaAuditoria()
+                })
+                .eq("id_usuariorol", asignacion.id_usuariorol);
+            asegurarResultado(errorDesactivacion);
+        }
+
         const { error: errorRol } = await supabase
             .from("usuario_rol")
             .update({
@@ -427,7 +452,7 @@ const actualizarUsuario = async (idEntrada, entrada) => {
                 pcmod: AUDITORIA.pc,
                 fecmod: fechaAuditoria()
             })
-            .eq("id_usuariorol", asignaciones[0].id_usuariorol);
+            .eq("id_usuariorol", asignacionElegida.id_usuariorol);
         asegurarResultado(errorRol);
     } else {
         await crearAsignacion(supabase, idUsuario, datos.id_rol);

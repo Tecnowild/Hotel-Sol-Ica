@@ -96,10 +96,32 @@ test("resolves one active administrator role and every active module", async () 
     ));
 });
 
-test("rejects more than one active role instead of combining their access", async () => {
+test("keeps administrator access when cleaning up legacy multiple-role assignments", async () => {
     filas.usuario_rol.push({
         id_usuario: 42,
         id_rol: 4,
+        vigente: "1",
+        estado: "1"
+    });
+    filas.rol.push({ id_rol: 4, n_rol: "GERENTE", estado: "1" });
+
+    const resultado = await obtenerPermisosUsuario(42);
+    assert.deepEqual(resultado.roles, ["ADMINISTRADOR"]);
+    assert.ok(resultado.modulos.includes("USUARIOS"));
+
+    filas.usuario_rol.pop();
+    filas.rol.pop();
+});
+
+test("does not combine access from multiple non-administrator roles", async () => {
+    filas.usuario_rol[0].id_rol = 4;
+    filas.rol.push(
+        { id_rol: 4, n_rol: "GERENTE", estado: "1" },
+        { id_rol: 5, n_rol: "CAJERO", estado: "1" }
+    );
+    filas.usuario_rol.push({
+        id_usuario: 42,
+        id_rol: 5,
         vigente: "1",
         estado: "1"
     });
@@ -110,6 +132,8 @@ test("rejects more than one active role instead of combining their access", asyn
     );
 
     filas.usuario_rol.pop();
+    filas.usuario_rol[0].id_rol = 1;
+    filas.rol.splice(-2);
 });
 
 test("applies the approved module policy to non-administrator roles", async () => {
