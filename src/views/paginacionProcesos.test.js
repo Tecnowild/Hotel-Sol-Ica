@@ -32,7 +32,6 @@ import {
     registrarCheckOut,
     registrarPago,
 } from "../services/procesosService";
-import { consultarDocumento } from "../services/factilizaService";
 
 jest.mock("../services/procesosService", () => ({
     abrirCaja: jest.fn(),
@@ -60,10 +59,6 @@ jest.mock("../services/procesosService", () => ({
     registrarPago: jest.fn(),
     registrarReserva: jest.fn(),
     listarCatalogosReserva: jest.fn(),
-}));
-
-jest.mock("../services/factilizaService", () => ({
-    consultarDocumento: jest.fn(),
 }));
 
 const crearRecepciones = (cantidad) =>
@@ -108,7 +103,6 @@ const crearPagos = (cantidad) =>
     }));
 
 beforeEach(() => {
-    consultarDocumento.mockReset();
     listarHabitaciones.mockResolvedValue([]);
     listarClientes.mockResolvedValue([]);
     listarRecepciones.mockResolvedValue(crearRecepciones(30));
@@ -126,9 +120,7 @@ beforeEach(() => {
     listarPagos.mockResolvedValue(crearPagos(30));
     buscarDisponibilidadHabitaciones.mockResolvedValue([]);
     listarCatalogosReserva.mockResolvedValue({
-        clientes: [],
-        identidades: [{ id_tipoidentidad: 1, abreviatura: "DNI" }],
-        distritos: [{ id_distrito: 5, d_distrito: "Ica" }],
+        huespedes: [],
         metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
     });
     registrarIngresoReserva.mockResolvedValue({});
@@ -464,10 +456,80 @@ test("Reservas busca habitaciones por fechas y huéspedes y permite seleccionarl
 
     await userEvent.click(screen.getByRole("button", { name: "Seleccionar" }));
     expect(await screen.findByRole("heading", { name: "Nueva reserva" })).toBeInTheDocument();
-    expect(screen.getByText(`Habitación 204 · ${entrada} al ${salida} · 3 huésped(es)`)).toBeInTheDocument();
+    expect(screen.getByText(`Habitación 204 · ${entrada} al ${salida} · 1 huésped(es)`)).toBeInTheDocument();
 });
 
-test("Reserva completa los datos de una persona con la consulta DNI de Factiliza", async () => {
+test("Reserva solo permite elegir huéspedes ya registrados y reutiliza su ficha", async () => {
+    const entrada = sumarDias(hoy(), 1);
+    const salida = sumarDias(entrada, 1);
+    buscarDisponibilidadHabitaciones.mockResolvedValue([{
+        id_habitacion: 17,
+        numero: "204",
+        categoria_nombre: "Doble",
+        estado_nombre: "Disponible",
+        precio: 120,
+    }]);
+    listarCatalogosReserva.mockResolvedValue({
+        huespedes: [
+            {
+                key: "persona-21",
+                tipo_cliente: "persona",
+                id_persona: 21,
+                id_cliente: null,
+                nombre: "María Elena Quispe Rojas",
+                documento: "12345678",
+                email: "maria@example.com",
+                persona: {
+                    id_tipoidentidad: 1,
+                    n_documento: "12345678",
+                    nombre: "María Elena",
+                    ap_paterno: "Quispe",
+                    ap_materno: "Rojas",
+                    email: "maria@example.com",
+                    celular: "999999999",
+                    id_distrito: 5,
+                },
+            },
+        ],
+        metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
+    });
+    registrarReserva.mockResolvedValue({
+        id_recepcion: 43,
+        d_inicial: 120,
+        f_entrada: entrada,
+        f_salida: salida,
+        cliente_nombre: "María Elena Quispe Rojas",
+    });
+    render(<Reservas />);
+
+    fireEvent.change(screen.getByLabelText("Fecha de entrada"), { target: { value: entrada } });
+    fireEvent.change(screen.getByLabelText("Fecha de salida"), { target: { value: salida } });
+    await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
+
+    expect(await screen.findByLabelText("Huésped registrado")).toBeInTheDocument();
+    expect(screen.queryByText("Registrar huésped")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Consultar DNI/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ })).toBeDisabled();
+
+    await userEvent.selectOptions(screen.getByLabelText("Huésped registrado"), "persona-21");
+    await userEvent.click(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ }));
+    await userEvent.click(await screen.findByRole("button", { name: "Guardar reserva" }));
+
+    await waitFor(() => expect(registrarReserva).toHaveBeenCalledWith(expect.objectContaining({
+        id_cliente: null,
+        tipo_cliente: "persona",
+        persona: expect.objectContaining({
+            n_documento: "12345678",
+            id_distrito: 5,
+        }),
+        id_habitacion: 17,
+        id_metodopago: 2,
+    })));
+    expect(await screen.findByText("Reserva registrada correctamente")).toBeInTheDocument();
+});
+
+test("Reserva avisa cuando no hay huéspedes registrados", async () => {
     const entrada = sumarDias(hoy(), 1);
     buscarDisponibilidadHabitaciones.mockResolvedValue([{
         id_habitacion: 17,
@@ -476,58 +538,19 @@ test("Reserva completa los datos de una persona con la consulta DNI de Factiliza
         estado_nombre: "Disponible",
         precio: 120,
     }]);
-    consultarDocumento.mockResolvedValue({
-        numero: "12345678",
-        nombres: "María Elena",
-        apellido_paterno: "Quispe",
-        apellido_materno: "Rojas",
+    listarCatalogosReserva.mockResolvedValue({
+        huespedes: [],
+        metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
     });
     render(<Reservas />);
 
     fireEvent.change(screen.getByLabelText("Fecha de entrada"), { target: { value: entrada } });
     await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
     await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
-    await screen.findByRole("button", { name: "Consultar DNI" });
-    await userEvent.type(screen.getByLabelText("DNI del huésped"), "12345678");
-    await userEvent.click(screen.getByRole("button", { name: "Consultar DNI" }));
 
-    await waitFor(() => {
-        expect(consultarDocumento).toHaveBeenCalledWith("dni", "12345678");
-        expect(screen.getByLabelText("Nombres del huésped")).toHaveValue("María Elena");
-        expect(screen.getByLabelText("Apellido paterno")).toHaveValue("Quispe");
-        expect(screen.getByLabelText("Apellido materno")).toHaveValue("Rojas");
-    });
-});
-
-test("Reserva completa los datos de una empresa con la consulta RUC de Factiliza", async () => {
-    const entrada = sumarDias(hoy(), 1);
-    buscarDisponibilidadHabitaciones.mockResolvedValue([{
-        id_habitacion: 17,
-        numero: "204",
-        categoria_nombre: "Doble",
-        estado_nombre: "Disponible",
-        precio: 120,
-    }]);
-    consultarDocumento.mockResolvedValue({
-        numero: "20123456789",
-        nombre_o_razon_social: "Servicios Hotel Sol S.A.C.",
-        direccion: "Av. Principal 123",
-    });
-    render(<Reservas />);
-
-    fireEvent.change(screen.getByLabelText("Fecha de entrada"), { target: { value: entrada } });
-    await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
-    await screen.findByRole("button", { name: "Persona natural" });
-    await userEvent.click(screen.getByRole("button", { name: "Empresa" }));
-    await userEvent.type(screen.getByLabelText("RUC de la empresa"), "20123456789");
-    await userEvent.click(screen.getByRole("button", { name: "Consultar RUC" }));
-
-    await waitFor(() => {
-        expect(consultarDocumento).toHaveBeenCalledWith("ruc", "20123456789");
-        expect(screen.getByLabelText("Razón social")).toHaveValue("Servicios Hotel Sol S.A.C.");
-        expect(screen.getByLabelText("Dirección de empresa")).toHaveValue("Av. Principal 123");
-    });
+    expect(await screen.findByText("No hay huéspedes registrados")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Huésped registrado")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ })).toBeDisabled();
 });
 
 test("reserva una habitación seleccionada con un huésped existente sin cobrar ni hacer check-in", async () => {
@@ -541,15 +564,23 @@ test("reserva una habitación seleccionada con un huésped existente sin cobrar 
         precio: 120,
     }]);
     listarCatalogosReserva.mockResolvedValue({
-        clientes: [{
-            id_cliente: 9,
+        huespedes: [{
+            key: "persona-21",
+            tipo_cliente: "persona",
             id_persona: 21,
+            id_cliente: 9,
             nombre: "Ana Huamán",
             documento: "12345678",
             email: "ana@example.com",
+            persona: {
+                id_tipoidentidad: 1,
+                n_documento: "12345678",
+                nombre: "Ana",
+                ap_paterno: "Huamán",
+                id_distrito: 5,
+                email: "ana@example.com",
+            },
         }],
-        identidades: [{ id_tipoidentidad: 1, abreviatura: "DNI" }],
-        distritos: [{ id_distrito: 5, d_distrito: "Ica" }],
         metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
     });
     registrarReserva.mockResolvedValue({
@@ -557,6 +588,8 @@ test("reserva una habitación seleccionada con un huésped existente sin cobrar 
         d_inicial: 240,
         f_entrada: entrada,
         f_salida: salida,
+        huespedes: 1,
+        acompanantes: [],
         cliente_nombre: "Ana Huamán",
     });
     render(<Reservas onVerReservas={jest.fn()} />);
@@ -565,8 +598,7 @@ test("reserva una habitación seleccionada con un huésped existente sin cobrar 
     fireEvent.change(screen.getByLabelText("Fecha de salida"), { target: { value: salida } });
     await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
     await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
-    await userEvent.click(await screen.findByRole("radio", { name: /Usar huésped registrado/ }));
-    await userEvent.selectOptions(screen.getByLabelText("Huésped registrado"), "9");
+    await userEvent.selectOptions(await screen.findByLabelText("Huésped registrado"), "persona-21");
     await userEvent.click(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Guardar reserva" }));
 
@@ -576,15 +608,102 @@ test("reserva una habitación seleccionada con un huésped existente sin cobrar 
         id_metodopago: 2,
         f_entrada: entrada,
         f_salida: salida,
-        huespedes: 2,
+        acompanantes: [],
         total: 240,
     })));
     expect(await screen.findByText("Reserva registrada correctamente")).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Huésped: Ana Huamán");
+    expect(screen.getByRole("status")).toHaveTextContent("Huésped principal: Ana Huamán");
     expect(screen.getByText("Pendiente de check-in")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Preparar correo" }).getAttribute("href"))
         .toContain("mailto:ana%40example.com");
     expect(screen.getByRole("button", { name: "Descargar comprobante PDF" })).toBeInTheDocument();
+});
+
+test("Reserva permite agregar acompañantes registrados y los guarda con la reserva", async () => {
+    const entrada = sumarDias(hoy(), 1);
+    const salida = sumarDias(entrada, 2);
+    buscarDisponibilidadHabitaciones.mockResolvedValue([{
+        id_habitacion: 17,
+        numero: "204",
+        categoria_nombre: "Doble",
+        estado_nombre: "Disponible",
+        precio: 120,
+    }]);
+    listarCatalogosReserva.mockResolvedValue({
+        huespedes: [
+            {
+                key: "persona-21",
+                id_persona: 21,
+                id_cliente: 9,
+                nombre: "Ana Huamán",
+                documento: "12345678",
+                email: "ana@example.com",
+                persona: {
+                    id_tipoidentidad: 1,
+                    n_documento: "12345678",
+                    nombre: "Ana",
+                    ap_paterno: "Huamán",
+                    id_distrito: 5,
+                },
+            },
+            {
+                key: "persona-22",
+                id_persona: 22,
+                id_cliente: null,
+                nombre: "Luis Paredes",
+                documento: "87654321",
+                email: "luis@example.com",
+                persona: {
+                    id_tipoidentidad: 1,
+                    n_documento: "87654321",
+                    nombre: "Luis",
+                    ap_paterno: "Paredes",
+                    id_distrito: 5,
+                },
+            },
+        ],
+        metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
+    });
+    registrarReserva.mockResolvedValue({
+        id_recepcion: 44,
+        d_inicial: 240,
+        f_entrada: entrada,
+        f_salida: salida,
+        huespedes: 2,
+        acompanantes: [{ id_persona: 22, nombre: "Luis Paredes", documento: "87654321", email: "luis@example.com" }],
+        cliente_nombre: "Ana Huamán",
+        cliente_documento: "12345678",
+        cliente_email: "ana@example.com",
+    });
+    render(<Reservas />);
+
+    fireEvent.change(screen.getByLabelText("Fecha de entrada"), { target: { value: entrada } });
+    fireEvent.change(screen.getByLabelText("Fecha de salida"), { target: { value: salida } });
+    fireEvent.change(screen.getByLabelText("Número de huéspedes"), { target: { value: "2" } });
+    await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
+    await userEvent.selectOptions(await screen.findByLabelText("Huésped registrado"), "persona-21");
+    await userEvent.click(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ }));
+
+    expect(await screen.findByText(/El huésped viaja solo/)).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Acompañante registrado"), "persona-22");
+    await userEvent.click(screen.getByRole("button", { name: "Agregar acompañante" }));
+
+    expect(screen.getByText("Luis Paredes")).toBeInTheDocument();
+    expect(screen.queryByText(/El huésped viaja solo/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Guardar reserva" }));
+
+    await waitFor(() => expect(registrarReserva).toHaveBeenCalledWith(expect.objectContaining({
+        id_cliente: 9,
+        tipo_cliente: "persona",
+        acompanantes: [{
+            id_persona: 22,
+            persona: expect.objectContaining({ n_documento: "87654321" }),
+        }],
+    })));
+    expect(await screen.findByText("Reserva registrada correctamente")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Acompañantes: Luis Paredes");
 });
 
 test("muestra un error al guardar si la habitación dejó de estar disponible", async () => {
@@ -598,9 +717,22 @@ test("muestra un error al guardar si la habitación dejó de estar disponible", 
         precio: 120,
     }]);
     listarCatalogosReserva.mockResolvedValue({
-        clientes: [{ id_cliente: 9, nombre: "Ana Huamán", documento: "12345678" }],
-        identidades: [],
-        distritos: [],
+        huespedes: [{
+            key: "persona-21",
+            tipo_cliente: "persona",
+            id_persona: 21,
+            id_cliente: 9,
+            nombre: "Ana Huamán",
+            documento: "12345678",
+            email: "",
+            persona: {
+                id_tipoidentidad: 1,
+                n_documento: "12345678",
+                nombre: "Ana",
+                ap_paterno: "Huamán",
+                id_distrito: 5,
+            },
+        }],
         metodos: [{ id_metodopago: 2, n_metodopago: "Efectivo" }],
     });
     registrarReserva.mockRejectedValue(new Error("La habitación ya no está disponible"));
@@ -610,8 +742,7 @@ test("muestra un error al guardar si la habitación dejó de estar disponible", 
     fireEvent.change(screen.getByLabelText("Fecha de salida"), { target: { value: salida } });
     await userEvent.click(screen.getByRole("button", { name: "Buscar" }));
     await userEvent.click(await screen.findByRole("button", { name: "Seleccionar" }));
-    await userEvent.click(await screen.findByRole("radio", { name: /Usar huésped registrado/ }));
-    await userEvent.selectOptions(screen.getByLabelText("Huésped registrado"), "9");
+    await userEvent.selectOptions(await screen.findByLabelText("Huésped registrado"), "persona-21");
     await userEvent.click(screen.getByRole("button", { name: /Siguiente: detalles de reserva/ }));
     await userEvent.click(await screen.findByRole("button", { name: "Guardar reserva" }));
 

@@ -81,7 +81,7 @@ const CheckInOut = () => {
             const [h, c, r, cat, aperturas] = await Promise.all([
                 listarHabitaciones(),
                 listarClientes(),
-                listarRecepciones(),
+                listarRecepciones({ conAcompanantes: true }),
                 listarCatalogosPago(),
                 listarAperturasAbiertas(),
             ]);
@@ -303,7 +303,7 @@ const CheckInOut = () => {
     };
 
     const filtradas = recepciones.filter((r) => {
-        const texto = `${r.cliente_nombre} ${r.cliente_documento} ${r.habitacion_numero} #${r.id_recepcion}`.toLowerCase();
+        const texto = `${r.cliente_nombre} ${r.cliente_documento} ${r.habitacion_numero} #${r.id_recepcion} ${(r.acompanantes || []).map((acompanante) => acompanante.nombre).join(" ")}`.toLowerCase();
         return texto.includes(busqueda.toLowerCase());
     });
 
@@ -569,6 +569,16 @@ const CheckInOut = () => {
                             <p className="text-sm text-slate-600">
                                 {recepcionCheckout.cliente_nombre} · Habitación {recepcionCheckout.habitacion_numero}
                             </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Acompañantes:{" "}
+                                {recepcionCheckout.acompanantes?.length
+                                    ? recepcionCheckout.acompanantes
+                                        .map((acompanante) =>
+                                            `${acompanante.nombre}${acompanante.documento ? ` (${acompanante.documento})` : ""}`
+                                        )
+                                        .join(", ")
+                                    : "ninguno (viaja solo)"}
+                            </p>
                         </div>
                         <button
                             type="button"
@@ -685,6 +695,7 @@ const CheckInOut = () => {
                             <tr>
                                 <th className="px-5 py-3 font-semibold">Recepción</th>
                                 <th className="px-5 py-3 font-semibold">Cliente</th>
+                                <th className="px-5 py-3 font-semibold">Huéspedes</th>
                                 <th className="px-5 py-3 font-semibold">Habitación</th>
                                 <th className="px-5 py-3 font-semibold">Entrada</th>
                                 <th className="px-5 py-3 font-semibold">Salida</th>
@@ -698,11 +709,11 @@ const CheckInOut = () => {
                         <tbody className="divide-y divide-gray-100">
                             {cargando ? (
                                 <tr>
-                                    <td colSpan={10} className="px-5 py-10 text-center text-gray-400">Cargando...</td>
+                                    <td colSpan={11} className="px-5 py-10 text-center text-gray-400">Cargando...</td>
                                 </tr>
                             ) : ordenadas.length === 0 ? (
                                 <tr>
-                                    <td colSpan={10} className="px-5 py-10 text-center text-gray-400">
+                                    <td colSpan={11} className="px-5 py-10 text-center text-gray-400">
                                         No hay reservas o estadías activas. Los check-outs completados permanecen en el historial de reservas.
                                     </td>
                                 </tr>
@@ -713,6 +724,18 @@ const CheckInOut = () => {
                                         <td className="px-5 py-3 text-slate-700">
                                             <div className="font-medium">{r.cliente_nombre}</div>
                                             <div className="text-xs text-gray-400">{r.cliente_documento}</div>
+                                        </td>
+                                        <td className="px-5 py-3 text-slate-700">
+                                            <div className="font-medium">
+                                                {1 + (r.acompanantes?.length || 0)}
+                                            </div>
+                                            {r.acompanantes?.length ? (
+                                                <div className="text-xs text-gray-400">
+                                                    {r.acompanantes.map((acompanante) => acompanante.nombre).join(", ")}
+                                                </div>
+                                            ) : (
+                                                <div className="text-xs text-gray-400">Viaja solo</div>
+                                            )}
                                         </td>
                                         <td className="px-5 py-3 text-slate-700">Hab. {r.habitacion_numero}</td>
                                         <td className="px-5 py-3 text-slate-700">{fecha(r.f_entrada)}</td>

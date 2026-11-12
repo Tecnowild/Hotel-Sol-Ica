@@ -1,3 +1,36 @@
 .App {
   min-height: 100vh;
 }
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  #reserva-comprobante-imprimir,
+  #reserva-comprobante-imprimir * {
+    visibility: visible !important;
+  }
+
+  #reserva-comprobante-imprimir {
+    position: absolute !important;
+    inset: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    box-shadow: none !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  #reserva-comprobante-imprimir .reserva-solo-pantalla {
+    display: none !important;
+  }
+}

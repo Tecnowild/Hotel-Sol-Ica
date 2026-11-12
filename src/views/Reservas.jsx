@@ -7,7 +7,6 @@ import {
     listarCatalogosReserva,
     registrarReserva,
 } from "../services/procesosService";
-import { consultarDocumento } from "../services/factilizaService";
 import { fecha, hoy, noches, soles, sumarDias } from "../utils/format";
 import { crearEnlaceCorreoReserva } from "../utils/comprobanteReserva";
 
@@ -17,35 +16,19 @@ const inputClase =
 const Reservas = ({ onVerReservas }) => {
     const [fEntrada, setFEntrada] = useState(hoy());
     const [fSalida, setFSalida] = useState(sumarDias(hoy(), 1));
-    const [huespedes, setHuespedes] = useState("2");
+    const [huespedes, setHuespedes] = useState("1");
     const [resultados, setResultados] = useState(null);
     const [habitacionSeleccionada, setHabitacionSeleccionada] = useState(null);
     const [mostrarFormulario, setMostrarFormulario] = useState(false);
     const [pasoFormulario, setPasoFormulario] = useState("huesped");
-    const [modoCliente, setModoCliente] = useState("nuevo");
-    const [tipoCliente, setTipoCliente] = useState("persona");
-    const [clienteId, setClienteId] = useState("");
-    const [busquedaCliente, setBusquedaCliente] = useState("");
+    const [busquedaHuesped, setBusquedaHuesped] = useState("");
+    const [huespedKey, setHuespedKey] = useState("");
+    const [acompanantes, setAcompanantes] = useState([]);
+    const [companeroKey, setCompaneroKey] = useState("");
     const [metodoPagoId, setMetodoPagoId] = useState("");
+    const [tipoDocumento, setTipoDocumento] = useState("BOLETA");
     const [catalogosReserva, setCatalogosReserva] = useState(null);
     const [cargandoCatalogos, setCargandoCatalogos] = useState(false);
-    const [consultandoDocumento, setConsultandoDocumento] = useState(false);
-    const [datosPersona, setDatosPersona] = useState({
-        id_tipoidentidad: "",
-        n_documento: "",
-        nombre: "",
-        ap_paterno: "",
-        ap_materno: "",
-        email: "",
-        celular: "",
-        id_distrito: "",
-    });
-    const [datosEmpresa, setDatosEmpresa] = useState({
-        ruc: "",
-        razon_social: "",
-        direccion: "",
-        telefono: "",
-    });
     const [guardandoReserva, setGuardandoReserva] = useState(false);
     const [reservaRegistrada, setReservaRegistrada] = useState(null);
     const [cargando, setCargando] = useState(false);
@@ -54,17 +37,34 @@ const Reservas = ({ onVerReservas }) => {
     const totalReserva = habitacionSeleccionada
         ? (Number(habitacionSeleccionada.precio) || 0) * noches(fEntrada, fSalida)
         : 0;
-    const identidadPersona = catalogosReserva?.identidades.find(
-        (identidad) => String(identidad.id_tipoidentidad) === String(datosPersona.id_tipoidentidad)
-    );
-    const documentoEsDni = String(identidadPersona?.abreviatura || "").toUpperCase() === "DNI";
-    const clientesFiltrados = (catalogosReserva?.clientes || []).filter((cliente) =>
-        `${cliente.nombre} ${cliente.documento} ${cliente.id_cliente}`
+    const huespedesFiltrados = (catalogosReserva?.huespedes || []).filter((huesped) =>
+        `${huesped.nombre} ${huesped.documento}`
             .toLocaleLowerCase("es")
-            .includes(busquedaCliente.trim().toLocaleLowerCase("es"))
+            .includes(busquedaHuesped.trim().toLocaleLowerCase("es"))
+    );
+    const huespedSeleccionado = (catalogosReserva?.huespedes || []).find(
+        (huesped) => huesped.key === huespedKey
+    ) || null;
+    const huespedesTotales = 1 + acompanantes.length;
+    const cantidadHuespedesSolicitada = Number(huespedes);
+    const maximoAcompanantes = Math.max(0, cantidadHuespedesSolicitada - 1);
+    const acompanantesDisponibles = (catalogosReserva?.huespedes || []).filter(
+        (huesped) => huesped.key !== huespedKey
+            && !acompanantes.some((acompanante) => acompanante.key === huesped.key)
     );
 
     const formularioRef = useRef(null);
+    const ultimaReservaImpresionRef = useRef(null);
+
+    useEffect(() => {
+        const idReserva = reservaRegistrada?.id_recepcion;
+        if (!idReserva || ultimaReservaImpresionRef.current === idReserva) return undefined;
+        ultimaReservaImpresionRef.current = idReserva;
+        const temporizador = window.setTimeout(() => {
+            if (typeof window.print === "function") window.print();
+        }, 300);
+        return () => window.clearTimeout(temporizador);
+    }, [reservaRegistrada]);
 
     // Al abrir el formulario de nueva reserva, lleva la vista hasta él
     // para que se vea cómo se despliega la "página" del libro.
@@ -112,114 +112,71 @@ const Reservas = ({ onVerReservas }) => {
         }
     };
 
+    const seleccionarHuesped = (event) => {
+        const key = event.target.value;
+        setHuespedKey(key);
+        // El huésped principal no puede quedar también como acompañante.
+        setAcompanantes((previos) => previos.filter((acompanante) => acompanante.key !== key));
+    };
+
+    const agregarAcompanante = () => {
+        if (acompanantes.length >= maximoAcompanantes) {
+            setError(`No puedes agregar más de ${maximoAcompanantes} acompañante(s) para esta reserva.`);
+            return;
+        }
+        const huesped = (catalogosReserva?.huespedes || []).find(
+            (item) => item.key === companeroKey
+        );
+        if (!huesped) {
+            setError("Selecciona un huésped registrado para agregarlo como acompañante.");
+            return;
+        }
+        if (huesped.key === huespedKey) {
+            setError("El huésped principal no puede ser su propio acompañante.");
+            return;
+        }
+        if (acompanantes.some((acompanante) => acompanante.key === huesped.key)) {
+            setError("Ese huésped ya está registrado como acompañante.");
+            return;
+        }
+        setAcompanantes((previos) => [...previos, huesped]);
+        setCompaneroKey("");
+        setError("");
+    };
+
+    const quitarAcompanante = (key) => {
+        setAcompanantes((previos) => previos.filter((acompanante) => acompanante.key !== key));
+    };
+
     const seleccionarHabitacion = async (habitacion) => {
         setHabitacionSeleccionada(habitacion);
         setReservaRegistrada(null);
         setError("");
         setMostrarFormulario(true);
         setPasoFormulario("huesped");
-        setModoCliente("nuevo");
-        setTipoCliente("persona");
-        setClienteId("");
-        setDatosPersona({
-            id_tipoidentidad: "",
-            n_documento: "",
-            nombre: "",
-            ap_paterno: "",
-            ap_materno: "",
-            email: "",
-            celular: "",
-            id_distrito: "",
-        });
-        setDatosEmpresa({ ruc: "", razon_social: "", direccion: "", telefono: "" });
+        setBusquedaHuesped("");
+        setHuespedKey("");
+        setAcompanantes([]);
+        setCompaneroKey("");
+        setTipoDocumento("BOLETA");
 
-        if (catalogosReserva) {
-            const dni = catalogosReserva.identidades.find(
-                (identidad) => String(identidad.abreviatura || "").toUpperCase() === "DNI"
-            );
-            if (dni) {
-                setDatosPersona((prev) => ({ ...prev, id_tipoidentidad: String(dni.id_tipoidentidad) }));
-            }
-            return;
-        }
+        if (catalogosReserva) return;
         setCargandoCatalogos(true);
         try {
             const catalogos = await listarCatalogosReserva();
             setCatalogosReserva(catalogos);
             setMetodoPagoId(catalogos.metodos[0] ? String(catalogos.metodos[0].id_metodopago) : "");
-            const dni = catalogos.identidades.find(
-                (identidad) => String(identidad.abreviatura || "").toUpperCase() === "DNI"
-            );
-            if (dni) {
-                setDatosPersona((prev) => ({ ...prev, id_tipoidentidad: String(dni.id_tipoidentidad) }));
-            }
         } catch (errorCatalogos) {
-            setError(`No se pudieron cargar los datos para registrar la reserva: ${errorCatalogos.message}`);
+            setError(`No se pudieron cargar los huéspedes registrados: ${errorCatalogos.message}`);
         } finally {
             setCargandoCatalogos(false);
         }
     };
 
-    const consultarDocumentoHuesped = async () => {
-        const esEmpresa = tipoCliente === "empresa";
-        if (!esEmpresa && !documentoEsDni) {
-            setError("Selecciona DNI como tipo de documento para consultar los datos.");
-            return;
-        }
-        const tipo = esEmpresa ? "ruc" : "dni";
-        const documento = String(esEmpresa ? datosEmpresa.ruc : datosPersona.n_documento).trim();
-        const longitud = esEmpresa ? 11 : 8;
-        if (!new RegExp(`^\\d{${longitud}}$`).test(documento)) {
-            setError(`Ingresa un ${tipo.toUpperCase()} válido de ${longitud} dígitos.`);
-            return;
-        }
-        setConsultandoDocumento(true);
-        setError("");
-        try {
-            const datos = await consultarDocumento(tipo, documento);
-            if (esEmpresa) {
-                setDatosEmpresa((prev) => ({
-                    ...prev,
-                    ruc: datos.numero || documento,
-                    razon_social: datos.nombre_o_razon_social || prev.razon_social,
-                    direccion: datos.direccion || prev.direccion,
-                }));
-            } else {
-                const tipoDni = catalogosReserva?.identidades.find(
-                    (identidad) => String(identidad.abreviatura || "").toUpperCase() === "DNI"
-                );
-                setDatosPersona((prev) => ({
-                    ...prev,
-                    id_tipoidentidad: tipoDni ? String(tipoDni.id_tipoidentidad) : prev.id_tipoidentidad,
-                    n_documento: datos.numero || documento,
-                    nombre: datos.nombres || prev.nombre,
-                    ap_paterno: datos.apellido_paterno || prev.ap_paterno,
-                    ap_materno: datos.apellido_materno || prev.ap_materno,
-                }));
-            }
-        } catch (errorConsulta) {
-            setError(errorConsulta.message);
-        } finally {
-            setConsultandoDocumento(false);
-        }
-    };
-
     const continuarDatosHuesped = () => {
         setError("");
-        if (modoCliente === "existente") {
-            if (!clienteId) {
-                setError("Selecciona un huésped o una empresa registrados.");
-                return;
-            }
-        } else if (tipoCliente === "persona") {
-            if (!datosPersona.id_tipoidentidad || !datosPersona.id_distrito
-                || !datosPersona.nombre.trim() || !datosPersona.ap_paterno.trim()
-                || !/^\d{8,12}$/.test(datosPersona.n_documento)) {
-                setError("Completa tipo y número de documento, nombres, apellido paterno y distrito.");
-                return;
-            }
-        } else if (!/^\d{11}$/.test(datosEmpresa.ruc) || !datosEmpresa.razon_social.trim()) {
-            setError("Ingresa un RUC de 11 dígitos y la razón social de la empresa.");
+        if (!huespedSeleccionado) {
+            setError("Selecciona un huésped registrado para la reserva.");
             return;
         }
         setPasoFormulario("reserva");
@@ -228,23 +185,42 @@ const Reservas = ({ onVerReservas }) => {
     const guardarReserva = async (e) => {
         e.preventDefault();
         setError("");
+        if (!huespedSeleccionado) {
+            setError("Selecciona un huésped registrado para la reserva.");
+            return;
+        }
         if (!habitacionSeleccionada || !metodoPagoId) {
             setError("Selecciona un método de pago previsto para continuar.");
+            return;
+        }
+        if (acompanantes.length !== maximoAcompanantes) {
+            setError(
+                `La reserva es para ${cantidadHuespedesSolicitada} huésped(es), incluido el principal. ` +
+                `Confirma exactamente ${maximoAcompanantes} acompañante(s) antes de guardar.`
+            );
+            return;
+        }
+        if (tipoDocumento === "FACTURA" && !/^\d{11}$/.test(String(huespedSeleccionado.documento || ""))) {
+            setError("Para solicitar factura, el huésped principal debe tener un RUC de 11 dígitos registrado.");
             return;
         }
         setGuardandoReserva(true);
         try {
             const reserva = await registrarReserva({
-                id_cliente: modoCliente === "existente" ? Number(clienteId) : null,
-                tipo_cliente: tipoCliente,
-                persona: datosPersona,
-                empresa: datosEmpresa,
+                id_cliente: huespedSeleccionado.id_cliente || null,
+                tipo_cliente: "persona",
+                persona: huespedSeleccionado.persona,
+                acompanantes: acompanantes.map((acompanante) => ({
+                    id_persona: acompanante.id_persona,
+                    persona: acompanante.persona,
+                })),
                 id_habitacion: habitacionSeleccionada.id_habitacion,
                 id_metodopago: Number(metodoPagoId),
                 f_entrada: fEntrada,
                 f_salida: fSalida,
-                huespedes: Number(huespedes),
                 total: totalReserva,
+                cantidad_huespedes: cantidadHuespedesSolicitada,
+                tipo_documento: tipoDocumento,
             });
             setReservaRegistrada({
                 ...reserva,
@@ -254,20 +230,20 @@ const Reservas = ({ onVerReservas }) => {
                 )?.n_metodopago || "",
                 estado_nombre: "Pendiente de check-in",
                 noches: noches(reserva.f_entrada, reserva.f_salida),
-                correo_envio: reserva.cliente_email || (
-                    modoCliente === "existente"
-                        ? catalogosReserva.clientes.find(
-                            (cliente) => String(cliente.id_cliente) === String(clienteId)
-                        )?.email
-                        : tipoCliente === "persona" ? datosPersona.email : ""
-                ) || "",
-                cliente_nombre: reserva.cliente_nombre || (tipoCliente === "empresa"
-                    ? datosEmpresa.razon_social
-                    : `${datosPersona.nombre} ${datosPersona.ap_paterno} ${datosPersona.ap_materno}`.trim()),
+                correo_envio: reserva.cliente_email || huespedSeleccionado.email || "",
+                cliente_nombre: reserva.cliente_nombre || huespedSeleccionado.nombre,
+                acompanantes: reserva.acompanantes || acompanantes.map((acompanante) => ({
+                    id_persona: acompanante.id_persona,
+                    nombre: acompanante.nombre,
+                    documento: acompanante.documento,
+                    email: acompanante.email,
+                })),
             });
             setMostrarFormulario(false);
             setHabitacionSeleccionada(null);
             setResultados(null);
+            setAcompanantes([]);
+            setCompaneroKey("");
         } catch (errorReserva) {
             setError(errorReserva.message || "No se pudo registrar la reserva.");
         } finally {
@@ -289,8 +265,13 @@ const Reservas = ({ onVerReservas }) => {
             startY: 52,
             head: [["Detalle", "Información"]],
             body: [
-                ["Huésped / razón social", reservaRegistrada.cliente_nombre || "-"],
+                ["Huésped principal", reservaRegistrada.cliente_nombre || "-"],
                 ["Documento", reservaRegistrada.cliente_documento || "-"],
+                ["Comprobante solicitado", reservaRegistrada.tipo_documento || "BOLETA"],
+                ...(reservaRegistrada.acompanantes || []).map((acompanante, indice) => [
+                    `Acompañante ${indice + 1}`,
+                    `${acompanante.nombre}${acompanante.documento ? ` · ${acompanante.documento}` : ""}`,
+                ]),
                 ["Habitación", String(reservaRegistrada.habitacion_numero || "-")],
                 ["Entrada", fecha(reservaRegistrada.f_entrada)],
                 ["Salida", fecha(reservaRegistrada.f_salida)],
@@ -341,7 +322,7 @@ const Reservas = ({ onVerReservas }) => {
     const limpiarBusqueda = () => {
         setFEntrada(hoy());
         setFSalida(sumarDias(hoy(), 1));
-        setHuespedes("2");
+        setHuespedes("1");
         setResultados(null);
         setHabitacionSeleccionada(null);
         setError("");
@@ -441,8 +422,8 @@ const Reservas = ({ onVerReservas }) => {
                     </div>
                 </div>
                 <p className="mt-4 text-xs text-slate-500">
-                    Estadía: {noches(fEntrada, fSalida)} noche(s). El inventario actual no registra capacidad máxima por habitación;
-                    confirma el número de huéspedes al preparar la reserva.
+                    Estadía: {noches(fEntrada, fSalida)} noche(s). El número incluye al huésped principal que hace la reserva;
+                    al continuar confirmarás los datos de cada acompañante.
                 </p>
             </form>
 
@@ -545,7 +526,7 @@ const Reservas = ({ onVerReservas }) => {
                                 Nueva reserva
                             </h3>
                             <p className="mt-1 text-sm text-slate-500">
-                                Habitación {habitacionSeleccionada.numero} · {fecha(fEntrada)} al {fecha(fSalida)} · {huespedes} huésped(es)
+                                {`Habitación ${habitacionSeleccionada.numero} · ${fecha(fEntrada)} al ${fecha(fSalida)} · ${huespedesTotales} huésped(es)${acompanantes.length > 0 ? ` (1 principal + ${acompanantes.length} acompañante(s))` : ""}`}
                             </p>
                         </div>
                         <button
@@ -579,222 +560,84 @@ const Reservas = ({ onVerReservas }) => {
                     </div>
 
                     {cargandoCatalogos ? (
-                        <p className="p-6 text-sm text-slate-500">Cargando huéspedes, documentos y métodos de pago...</p>
+                        <p className="p-6 text-sm text-slate-500">Cargando huéspedes registrados y métodos de pago...</p>
                     ) : catalogosReserva && pasoFormulario === "huesped" ? (
                         <div className="p-5 sm:p-6">
-                            <div className="mb-5 grid gap-3 sm:grid-cols-2">
-                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4">
-                                    <input
-                                        type="radio"
-                                        name="modoCliente"
-                                        value="nuevo"
-                                        checked={modoCliente === "nuevo"}
-                                        onChange={() => { setModoCliente("nuevo"); setClienteId(""); }}
-                                        className="mt-1"
-                                    />
-                                    <span>
-                                        <span className="block text-sm font-semibold text-slate-900">Registrar huésped</span>
-                                        <span className="mt-1 block text-xs text-slate-500">Crear una persona o empresa en el registro del hotel.</span>
-                                    </span>
-                                </label>
-                                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 p-4">
-                                    <input
-                                        type="radio"
-                                        name="modoCliente"
-                                        value="existente"
-                                        checked={modoCliente === "existente"}
-                                        onChange={() => { setModoCliente("existente"); setClienteId(""); }}
-                                        className="mt-1"
-                                    />
-                                    <span>
-                                        <span className="block text-sm font-semibold text-slate-900">Usar huésped registrado</span>
-                                        <span className="mt-1 block text-xs text-slate-500">Buscar una persona o empresa ya registrada.</span>
-                                    </span>
-                                </label>
+                            <div className="mb-5 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
+                                <p className="font-semibold">
+                                    <i className="bi bi-person-check mr-2"></i>
+                                    Solo huéspedes registrados
+                                </p>
+                                <p className="mt-1 text-xs text-blue-800">
+                                    Busca y selecciona un huésped ya registrado. Si el huésped no aparece,
+                                    regístralo primero en el módulo <strong>Huéspedes</strong> y vuelve a esta reserva.
+                                </p>
                             </div>
 
-                            {modoCliente === "existente" ? (
+                            {catalogosReserva.huespedes.length === 0 ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+                                    <p className="font-semibold">
+                                        <i className="bi bi-exclamation-triangle mr-2"></i>
+                                        No hay huéspedes registrados
+                                    </p>
+                                    <p className="mt-1">
+                                        Registra al huésped desde el módulo <strong>Huéspedes</strong> y luego
+                                        vuelve a intentar la reserva.
+                                    </p>
+                                </div>
+                            ) : (
                                 <div className="max-w-2xl">
-                                    <label htmlFor="reserva-busqueda-cliente" className="block text-xs font-semibold text-slate-700">
-                                        Buscar huésped por nombre, DNI/RUC o código
+                                    <label htmlFor="reserva-busqueda-huesped" className="block text-xs font-semibold text-slate-700">
+                                        Buscar huésped por nombre o DNI
                                     </label>
                                     <input
-                                        id="reserva-busqueda-cliente"
+                                        id="reserva-busqueda-huesped"
                                         type="search"
-                                        value={busquedaCliente}
-                                        onChange={(e) => setBusquedaCliente(e.target.value)}
+                                        value={busquedaHuesped}
+                                        onChange={(e) => setBusquedaHuesped(e.target.value)}
                                         placeholder="Escribe nombre o documento..."
                                         className={`${inputClase} mt-1.5 font-normal`}
                                     />
-                                    <label htmlFor="reserva-cliente-registrado" className="mt-3 block text-xs font-semibold text-slate-700">
-                                        Huésped o empresa *
+                                    <label htmlFor="reserva-huesped-registrado" className="mt-3 block text-xs font-semibold text-slate-700">
+                                        Huésped registrado *
                                     </label>
                                     <select
-                                        id="reserva-cliente-registrado"
+                                        id="reserva-huesped-registrado"
                                         aria-label="Huésped registrado"
-                                        value={clienteId}
-                                        onChange={(e) => setClienteId(e.target.value)}
+                                        value={huespedKey}
+                                        onChange={seleccionarHuesped}
                                         className={`${inputClase} mt-1.5 font-normal`}
                                     >
                                         <option value="">-- Seleccione --</option>
-                                        {clientesFiltrados.map((cliente) => (
-                                            <option key={cliente.id_cliente} value={cliente.id_cliente}>
-                                                {cliente.nombre} · {cliente.documento || "Sin documento"}
+                                        {huespedesFiltrados.map((huesped) => (
+                                            <option key={huesped.key} value={huesped.key}>
+                                                {huesped.nombre} · {huesped.documento || "Sin documento"}
                                             </option>
                                         ))}
                                     </select>
-                                    {clientesFiltrados.length === 0 && (
+                                    {huespedesFiltrados.length === 0 && (
                                         <p className="mt-2 text-xs text-amber-700">No hay huéspedes que coincidan con la búsqueda.</p>
                                     )}
-                                </div>
-                            ) : (
-                                <>
-                                    <div className="mb-4 flex flex-wrap gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setTipoCliente("persona")}
-                                            className={`rounded-full px-4 py-2 text-sm font-semibold ${tipoCliente === "persona" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
-                                        >
-                                            Persona natural
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setTipoCliente("empresa")}
-                                            className={`rounded-full px-4 py-2 text-sm font-semibold ${tipoCliente === "empresa" ? "bg-blue-700 text-white" : "bg-slate-100 text-slate-700"}`}
-                                        >
-                                            Empresa
-                                        </button>
-                                    </div>
-
-                                    {tipoCliente === "persona" ? (
-                                        <>
-                                            <div className="mb-4 grid gap-4 sm:grid-cols-2">
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Tipo de documento *
-                                                    <select
-                                                        aria-label="Tipo de documento"
-                                                        value={datosPersona.id_tipoidentidad}
-                                                        onChange={(e) => setDatosPersona((prev) => ({ ...prev, id_tipoidentidad: e.target.value }))}
-                                                        className={`${inputClase} mt-1.5 font-normal`}
-                                                    >
-                                                        <option value="">-- Seleccione --</option>
-                                                        {catalogosReserva.identidades.map((identidad) => (
-                                                            <option key={identidad.id_tipoidentidad} value={identidad.id_tipoidentidad}>
-                                                                {identidad.abreviatura}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                                <div>
-                                                    <label htmlFor="reserva-documento-persona" className="block text-xs font-semibold text-slate-700">
-                                                        Número de documento *
-                                                    </label>
-                                                    <div className="mt-1.5 flex gap-2">
-                                                        <input
-                                                            id="reserva-documento-persona"
-                                                            aria-label="DNI del huésped"
-                                                            type="text"
-                                                            inputMode="numeric"
-                                                            maxLength={documentoEsDni ? "8" : "12"}
-                                                            value={datosPersona.n_documento}
-                                                            onChange={(e) => setDatosPersona((prev) => ({ ...prev, n_documento: e.target.value.replace(/\D/g, "") }))}
-                                                            className={`${inputClase} min-w-0 font-normal`}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={consultarDocumentoHuesped}
-                                                            disabled={consultandoDocumento || !documentoEsDni}
-                                                            className="shrink-0 rounded-xl bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-                                                        >
-                                                            {consultandoDocumento ? "Consultando..." : "Consultar DNI"}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Nombres *
-                                                    <input aria-label="Nombres del huésped" value={datosPersona.nombre} onChange={(e) => setDatosPersona((prev) => ({ ...prev, nombre: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                                </label>
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Apellido paterno *
-                                                    <input aria-label="Apellido paterno" value={datosPersona.ap_paterno} onChange={(e) => setDatosPersona((prev) => ({ ...prev, ap_paterno: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                                </label>
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Apellido materno
-                                                    <input aria-label="Apellido materno" value={datosPersona.ap_materno} onChange={(e) => setDatosPersona((prev) => ({ ...prev, ap_materno: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                                </label>
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Teléfono
-                                                    <input aria-label="Teléfono del huésped" type="tel" value={datosPersona.celular} onChange={(e) => setDatosPersona((prev) => ({ ...prev, celular: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                                </label>
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Correo electrónico
-                                                    <input aria-label="Correo del huésped" type="email" value={datosPersona.email} onChange={(e) => setDatosPersona((prev) => ({ ...prev, email: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                                </label>
-                                                <label className="block text-xs font-semibold text-slate-700">
-                                                    Distrito *
-                                                    <select
-                                                        aria-label="Distrito del huésped"
-                                                        value={datosPersona.id_distrito}
-                                                        onChange={(e) => setDatosPersona((prev) => ({ ...prev, id_distrito: e.target.value }))}
-                                                        className={`${inputClase} mt-1.5 font-normal`}
-                                                    >
-                                                        <option value="">-- Seleccione --</option>
-                                                        {catalogosReserva.distritos.map((distrito) => (
-                                                            <option key={distrito.id_distrito} value={distrito.id_distrito}>{distrito.d_distrito}</option>
-                                                        ))}
-                                                    </select>
-                                                </label>
-                                            </div>
-                                        </>
-                                    ) : (
-                                        <div className="grid gap-4 sm:grid-cols-2">
-                                            <div>
-                                                <label htmlFor="reserva-ruc" className="block text-xs font-semibold text-slate-700">RUC *</label>
-                                                <div className="mt-1.5 flex gap-2">
-                                                    <input
-                                                        id="reserva-ruc"
-                                                        aria-label="RUC de la empresa"
-                                                        type="text"
-                                                        inputMode="numeric"
-                                                        maxLength="11"
-                                                        value={datosEmpresa.ruc}
-                                                        onChange={(e) => setDatosEmpresa((prev) => ({ ...prev, ruc: e.target.value.replace(/\D/g, "") }))}
-                                                        className={`${inputClase} min-w-0 font-normal`}
-                                                    />
-                                                    <button
-                                                        type="button"
-                                                        onClick={consultarDocumentoHuesped}
-                                                        disabled={consultandoDocumento}
-                                                        className="shrink-0 rounded-xl bg-blue-700 px-3 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
-                                                    >
-                                                        {consultandoDocumento ? "Consultando..." : "Consultar RUC"}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <label className="block text-xs font-semibold text-slate-700">
-                                                Razón social *
-                                                <input aria-label="Razón social" value={datosEmpresa.razon_social} onChange={(e) => setDatosEmpresa((prev) => ({ ...prev, razon_social: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                            </label>
-                                            <label className="block text-xs font-semibold text-slate-700">
-                                                Dirección
-                                                <input aria-label="Dirección de empresa" value={datosEmpresa.direccion} onChange={(e) => setDatosEmpresa((prev) => ({ ...prev, direccion: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                            </label>
-                                            <label className="block text-xs font-semibold text-slate-700">
-                                                Teléfono
-                                                <input aria-label="Teléfono de empresa" type="tel" value={datosEmpresa.telefono} onChange={(e) => setDatosEmpresa((prev) => ({ ...prev, telefono: e.target.value }))} className={`${inputClase} mt-1.5 font-normal`} />
-                                            </label>
+                                    {huespedSeleccionado && (
+                                        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
+                                            <p className="font-semibold">
+                                                <i className="bi bi-person-check-fill mr-2"></i>
+                                                {huespedSeleccionado.nombre}
+                                            </p>
+                                            <p className="mt-1 text-xs">
+                                                Persona · Documento: {huespedSeleccionado.documento || "—"}
+                                                {huespedSeleccionado.email ? ` · ${huespedSeleccionado.email}` : ""}
+                                            </p>
                                         </div>
                                     )}
-                                </>
+                                </div>
                             )}
 
                             <div className="mt-6 flex justify-end">
                                 <button
                                     type="button"
                                     onClick={continuarDatosHuesped}
-                                    disabled={cargandoCatalogos || consultandoDocumento}
+                                    disabled={cargandoCatalogos || !huespedSeleccionado || catalogosReserva.huespedes.length === 0}
                                     className="rounded-xl bg-blue-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
                                 >
                                     Siguiente: detalles de reserva
@@ -804,7 +647,16 @@ const Reservas = ({ onVerReservas }) => {
                         </div>
                     ) : catalogosReserva ? (
                         <form onSubmit={guardarReserva} className="p-5 sm:p-6">
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="rounded-xl bg-slate-50 p-4 text-sm">
+                                    <p className="text-xs text-slate-500">Huésped principal</p>
+                                    <p className="mt-1 font-semibold text-slate-900">
+                                        {huespedSeleccionado?.nombre || "—"}
+                                    </p>
+                                    <p className="text-xs text-slate-500">
+                                        {huespedSeleccionado?.documento || "Sin documento"}
+                                    </p>
+                                </div>
                                 <div className="rounded-xl bg-slate-50 p-4 text-sm">
                                     <p className="text-xs text-slate-500">Habitación</p>
                                     <p className="mt-1 font-semibold text-slate-900">
@@ -822,6 +674,100 @@ const Reservas = ({ onVerReservas }) => {
                                     <p className="mt-1 text-lg font-bold">{soles(totalReserva)}</p>
                                     <p className="text-xs">{soles(habitacionSeleccionada.precio)} por noche</p>
                                 </div>
+                            </div>
+                            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                        <h4 className="text-sm font-semibold text-slate-900">
+                                            <i className="bi bi-people-fill mr-2 text-blue-700"></i>
+                                            Acompañantes
+                                        </h4>
+                                        <p className="mt-1 text-xs text-slate-600">
+                                            Registra a las demás personas que se hospedarán en la habitación. El huésped principal ya cuenta en el total.
+                                            Deben existir en el módulo <strong>Huéspedes</strong>.
+                                        </p>
+                                    </div>
+                                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-800">
+                                        {huespedesTotales} de {cantidadHuespedesSolicitada} huésped(es)
+                                    </span>
+                                </div>
+
+                                {acompanantes.length > 0 ? (
+                                    <ul className="mt-3 space-y-2">
+                                        {acompanantes.map((acompanante) => (
+                                            <li
+                                                key={acompanante.key}
+                                                className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+                                            >
+                                                <span className="text-slate-800">
+                                                    <i className="bi bi-person-fill mr-2 text-slate-400"></i>
+                                                    <strong className="font-semibold">{acompanante.nombre}</strong>
+                                                    <span className="text-slate-500">
+                                                        {" "}· {acompanante.documento || "Sin documento"}
+                                                    </span>
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => quitarAcompanante(acompanante.key)}
+                                                    className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-700 hover:bg-red-50"
+                                                >
+                                                    <i className="bi bi-x-lg mr-1"></i>
+                                                    Quitar
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="mt-3 rounded-xl border border-dashed border-slate-300 bg-white px-3 py-3 text-xs text-slate-500">
+                                        El huésped viaja solo. Si la habitación es para más de una persona,
+                                        agrega a los acompañantes aquí.
+                                    </p>
+                                )}
+
+                                <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                                    <label className="block flex-1 text-xs font-semibold text-slate-700">
+                                        Huésped registrado para agregar
+                                        <select
+                                            aria-label="Acompañante registrado"
+                                            value={companeroKey}
+                                            onChange={(e) => setCompaneroKey(e.target.value)}
+                                            disabled={acompanantesDisponibles.length === 0 || acompanantes.length >= maximoAcompanantes}
+                                            className={`${inputClase} mt-1.5 font-normal`}
+                                        >
+                                            <option value="">-- Seleccione --</option>
+                                            {acompanantesDisponibles.map((huesped) => (
+                                                <option key={huesped.key} value={huesped.key}>
+                                                    {huesped.nombre} · {huesped.documento || "Sin documento"}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <button
+                                        type="button"
+                                        onClick={agregarAcompanante}
+                                        disabled={!companeroKey || acompanantesDisponibles.length === 0 || acompanantes.length >= maximoAcompanantes}
+                                        className="rounded-xl bg-blue-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+                                    >
+                                        <i className="bi bi-person-plus mr-2"></i>
+                                        Agregar acompañante
+                                    </button>
+                                </div>
+                                {acompanantes.length < maximoAcompanantes && (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        Falta confirmar {maximoAcompanantes - acompanantes.length} acompañante(s) para completar el total solicitado.
+                                    </p>
+                                )}
+                                {acompanantes.length > maximoAcompanantes && (
+                                    <p role="alert" className="mt-2 text-xs text-red-700">
+                                        Quitando {acompanantes.length - maximoAcompanantes} acompañante(s) podrás guardar la cantidad solicitada.
+                                    </p>
+                                )}
+                                {acompanantesDisponibles.length === 0 && (
+                                    <p className="mt-2 text-xs text-amber-700">
+                                        No hay más huéspedes disponibles para agregar. Registra a la persona
+                                        en el módulo <strong>Huéspedes</strong> si aún no existe.
+                                    </p>
+                                )}
                             </div>
                             <div className="mt-5 grid gap-4 sm:grid-cols-2">
                                 <label className="block text-xs font-semibold text-slate-700">
@@ -841,15 +787,33 @@ const Reservas = ({ onVerReservas }) => {
                                         ))}
                                     </select>
                                 </label>
+                                <label className="block text-xs font-semibold text-slate-700">
+                                    Comprobante solicitado *
+                                    <select
+                                        aria-label="Comprobante solicitado"
+                                        required
+                                        value={tipoDocumento}
+                                        onChange={(e) => setTipoDocumento(e.target.value)}
+                                        className={`${inputClase} mt-1.5 font-normal`}
+                                    >
+                                        <option value="BOLETA">Boleta</option>
+                                        <option value="FACTURA">Factura</option>
+                                    </select>
+                                    <span className="mt-1 block font-normal text-slate-500">
+                                        Se registrará para emitirlo al completar la estadía. Para factura se requiere RUC de 11 dígitos.
+                                    </span>
+                                </label>
                                 {catalogosReserva.metodos.length === 0 && (
                                     <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:col-span-2">
                                         No hay métodos de pago activos. La reserva necesita un método previsto según la estructura actual; solicita al administrador que configure el catálogo.
                                     </p>
                                 )}
                                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900 sm:col-span-2">
-                                    La reserva no registra un cobro ni un adelanto en este paso. Los huéspedes son informativos:
-                                    la tabla existente de reservas no tiene un campo para persistir su cantidad. El check-in y el pago se gestionan después.
-                                </div>
+                                    La reserva no registra un cobro ni un adelanto en este paso. Se guardará el
+                                    huésped principal junto con los acompañantes seleccionados, para saber
+                                        quiénes se hospedan. El comprobante seleccionado no se emite aquí: la constancia de reserva
+                                        no reemplaza una boleta ni una factura.
+                                    </div>
                             </div>
                             <div className="mt-6 flex flex-wrap justify-between gap-2">
                                 <button
@@ -858,11 +822,11 @@ const Reservas = ({ onVerReservas }) => {
                                     className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200"
                                 >
                                     <i className="bi bi-arrow-left mr-2"></i>
-                                    Volver a datos del huésped
+                                    Volver a elegir huésped
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={guardandoReserva || !metodoPagoId}
+                                    disabled={guardandoReserva || !metodoPagoId || acompanantes.length !== maximoAcompanantes}
                                     className="rounded-xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-60"
                                 >
                                     <i className="bi bi-calendar-check mr-2"></i>
@@ -876,7 +840,11 @@ const Reservas = ({ onVerReservas }) => {
             )}
 
             {reservaRegistrada && (
-                <section role="status" className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900">
+                <section
+                    id="reserva-comprobante-imprimir"
+                    role="status"
+                    className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-5 text-emerald-900"
+                >
                     <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
                             <h3 className="font-semibold">
@@ -885,19 +853,38 @@ const Reservas = ({ onVerReservas }) => {
                             </h3>
                             <div className="mt-3 grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
                                 <p>Número: <strong>#{reservaRegistrada.id_recepcion}</strong></p>
-                                <p>Huésped: <strong>{reservaRegistrada.cliente_nombre}</strong></p>
+                                <p>Huésped principal: <strong>{reservaRegistrada.cliente_nombre}</strong></p>
                                 <p>Documento: <strong>{reservaRegistrada.cliente_documento || "—"}</strong></p>
                                 <p>Habitación: <strong>{reservaRegistrada.habitacion_numero}</strong></p>
                                 <p>
                                     Estadía: <strong>{fecha(reservaRegistrada.f_entrada)} – {fecha(reservaRegistrada.f_salida)} · {reservaRegistrada.noches} noche(s)</strong>
                                 </p>
                                 <p>Huéspedes: <strong>{reservaRegistrada.huespedes}</strong></p>
+                                <p className="sm:col-span-2">
+                                    Acompañantes:{" "}
+                                    <strong>
+                                        {reservaRegistrada.acompanantes?.length
+                                            ? reservaRegistrada.acompanantes
+                                                .map((acompanante) => acompanante.nombre)
+                                                .join(", ")
+                                            : "Ninguno (viaja solo)"}
+                                    </strong>
+                                </p>
                                 <p>Total reservado: <strong>{soles(reservaRegistrada.d_inicial)}</strong></p>
                                 <p>Método previsto: <strong>{reservaRegistrada.metodo_pago_nombre || "—"}</strong></p>
+                                <p>Comprobante solicitado: <strong>{reservaRegistrada.tipo_documento || "BOLETA"}</strong></p>
                                 <p>Estado: <strong>{reservaRegistrada.estado_nombre}</strong></p>
                             </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="reserva-solo-pantalla flex flex-wrap gap-2">
+                            <button
+                                type="button"
+                                onClick={() => window.print()}
+                                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800"
+                            >
+                                <i className="bi bi-printer mr-2"></i>
+                                Imprimir constancia
+                            </button>
                             <button
                                 type="button"
                                 onClick={descargarComprobante}
@@ -927,7 +914,7 @@ const Reservas = ({ onVerReservas }) => {
                             </button>
                         </div>
                     </div>
-                    <div className="mt-5 border-t border-emerald-200 pt-4">
+                    <div className="reserva-solo-pantalla mt-5 border-t border-emerald-200 pt-4">
                         <label className="block max-w-lg text-sm font-semibold text-emerald-950">
                             Correo del destinatario
                             <input
@@ -958,7 +945,8 @@ const Reservas = ({ onVerReservas }) => {
                         </a>
                         <p className="mt-2 text-xs text-emerald-800">
                             Se abrirá un borrador en tu aplicación de correo con el resumen. Descarga el PDF y adjúntalo manualmente;
-                            el sistema no envía correos ni guarda este destinatario. La reserva no es una factura ni un comprobante de pago.
+                            el sistema no envía correos ni guarda este destinatario. La constancia de reserva tampoco es una factura,
+                            boleta ni comprobante de pago.
                         </p>
                     </div>
                 </section>

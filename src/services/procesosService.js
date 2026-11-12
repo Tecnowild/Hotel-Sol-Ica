@@ -181,17 +181,23 @@ export const listarCatalogosPago = async () => {
 // ------------------------------------------------------------
 // CHECK-IN / CHECK-OUT
 // ------------------------------------------------------------
-export const listarRecepciones = async () => {
+export const listarRecepciones = async ({ conAcompanantes = false } = {}) => {
     const [recepciones, clientes, habitaciones] = await Promise.all([
         leer(supabase.from("recepcion").select("*").eq("estado", "1").order("id_recepcion", { ascending: false })),
         listarClientes(),
         listarHabitaciones(),
     ]);
+    const acompanantes = conAcompanantes
+        ? await listarAcompanantesRecepciones(recepciones.map((r) => r.id_recepcion))
+        : null;
     return recepciones.map((r) => {
         const cliente = clientes.find((c) => String(c.id_cliente) === String(r.id_cliente));
         const habitacion = habitaciones.find((h) => String(h.id_habitacion) === String(r.id_habitacion));
         return {
             ...r,
+            ...(acompanantes
+                ? { acompanantes: acompanantes.get(String(r.id_recepcion)) || [] }
+                : {}),
             cliente_nombre: cliente?.nombre || `Cliente #${r.id_cliente}`,
             cliente_documento: cliente?.documento || r.documento || "",
             habitacion_numero: habitacion?.numero || r.id_habitacion,
@@ -367,14 +373,121 @@ export const buscarDisponibilidadHabitaciones = async ({ f_entrada, f_salida }) 
     return buscarHabitacionesDisponibles(habitaciones, recepciones, f_entrada, f_salida);
 };
 
+const ACCION_ACOMPANANTE = "ACOMPANANTE";
+const TABLA_ACOMPANANTE = "recepcion";
+
+// Los acompañantes se guardan como eventos de trazabilidad vinculados a la
+// recepción (tabla auditoria), porque el esquema actual no tiene una tabla
+// propia de acompañantes y la aplicación no puede crear tablas en Supabase.
+const filaAcompanante = (idRecepcion, idPersona) => ({
+    id_usuario: usuarioActualId(),
+    n_tabla: TABLA_ACOMPANANTE,
+    accion: ACCION_ACOMPANANTE,
+    id_registro: Number(idRecepcion),
+    valor_anterior: null,
+    valor_nuevo: String(idPersona),
+    f_evento: ahora(),
+    ip: null,
+    terminal: "WEB",
+});
+
+const leerPersonasPorIds = async (ids) => {
+    const limpios = [...new Set(ids.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+    if (!limpios.length) return [];
+    return leer(supabase.from("persona").select("*").in("id_persona", limpios));
+};
+
+// Devuelve un Map id_recepcion -> acompañantes (personas registradas).
+export const listarAcompanantesRecepciones = async (idsRecepcion) => {
+    const ids = [...new Set(
+        (Array.isArray(idsRecepcion) ? idsRecepcion : [idsRecepcion])
+            .map(Number)
+            .filter((id) => Number.isInteger(id) && id > 0)
+    )];
+    const resultado = new Map(ids.map((id) => [String(id), []]));
+    if (!ids.length) return resultado;
+
+    const eventos = await leer(supabase
+        .from("auditoria")
+        .select("id_registro, valor_nuevo, id_auditoria")
+        .eq("n_tabla", TABLA_ACOMPANANTE)
+        .eq("accion", ACCION_ACOMPANANTE)
+        .eq("estado", "1")
+        .in("id_registro", ids)
+        .order("id_auditoria"));
+
+    const idPersonas = eventos
+        .map((evento) => Number(evento.valor_nuevo))
+        .filter((id) => Number.isInteger(id) && id > 0);
+    if (!idPersonas.length) return resultado;
+
+    const personas = await leerPersonasPorIds(idPersonas);
+    const personaPorId = new Map(
+        personas.map((persona) => [String(persona.id_persona), persona])
+    );
+
+    for (const evento of eventos) {
+        const persona = personaPorId.get(String(evento.valor_nuevo));
+        if (!persona) continue;
+        const lista = resultado.get(String(evento.id_registro));
+        if (!lista) continue;
+        lista.push({
+            id_persona: persona.id_persona,
+            nombre: nombrePersona(persona),
+            documento: persona.n_documento || "",
+            email: persona.email || "",
+        });
+    }
+    return resultado;
+};
+
+export const listarAcompanantesReserva = async (idRecepcion) => {
+    const mapa = await listarAcompanantesRecepciones([idRecepcion]);
+    return mapa.get(String(Number(idRecepcion))) || [];
+};
+
 export const listarCatalogosReserva = async () => {
-    const [clientes, identidades, distritos, metodos] = await Promise.all([
+    const [clientes, personas, metodos] = await Promise.all([
         listarClientes(),
-        leer(supabase.from("tipo_identidad").select("*").eq("estado", "1").order("abreviatura")),
-        leer(supabase.from("distrito").select("*").eq("estado", "1").order("d_distrito")),
+        leer(supabase.from("persona").select("*").eq("estado", "1")),
         leer(supabase.from("metodo_pago").select("*").eq("estado", "1").order("n_metodopago")),
     ]);
-    return { clientes, identidades, distritos, metodos };
+
+    const clienteDePersona = (idPersona) => clientes.find(
+        (cliente) => String(cliente.id_persona) === String(idPersona)
+    );
+
+    // Las reservas de un hotel se registran a nombre de una persona natural.
+    // Se usa la tabla persona como registro oficial y se enlaza el cliente
+    // existente cuando ya lo tiene (si no, se crea al reservar).
+    const huespedes = personas.map((persona) => {
+        const cliente = clienteDePersona(persona.id_persona);
+        return {
+            key: `persona-${persona.id_persona}`,
+            id_persona: persona.id_persona,
+            id_cliente: cliente?.id_cliente ?? null,
+            nombre: nombrePersona(persona),
+            documento: persona.n_documento || "",
+            email: persona.email || "",
+            persona,
+        };
+    });
+
+    // Evita mostrar dos veces el mismo documento si hay registros repetidos,
+    // dando prioridad al que ya tiene un cliente vinculado.
+    const porDocumento = new Map();
+    for (const huesped of huespedes) {
+        const clave = huesped.documento || huesped.key;
+        const previo = porDocumento.get(clave);
+        if (!previo || (!previo.id_cliente && huesped.id_cliente)) {
+            porDocumento.set(clave, huesped);
+        }
+    }
+
+    return {
+        huespedes: [...porDocumento.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es")),
+        metodos,
+    };
 };
 
 const insertarClienteReserva = async ({ tipo_cliente, persona, empresa }, clientes) => {
@@ -460,22 +573,24 @@ export const registrarReserva = async ({
     id_cliente,
     tipo_cliente,
     persona,
-    empresa,
     id_habitacion,
     id_metodopago,
     f_entrada,
     f_salida,
-    huespedes,
+    acompanantes = [],
+    cantidad_huespedes,
+    tipo_documento = "BOLETA",
     total,
 }) => {
     const habitacionId = Number(id_habitacion);
     const metodoId = Number(id_metodopago);
-    const huespedesTotal = Number(huespedes);
     const totalIngresado = Number(total);
     if (!Number.isInteger(habitacionId) || habitacionId <= 0) throw new Error("Selecciona una habitación válida.");
     if (!Number.isInteger(metodoId) || metodoId <= 0) throw new Error("Selecciona un método de pago previsto.");
-    if (!Number.isInteger(huespedesTotal) || huespedesTotal < 1) throw new Error("La cantidad de huéspedes no es válida.");
     if (!Number.isFinite(totalIngresado) || totalIngresado < 0) throw new Error("El total de la reserva no es válido.");
+    if (tipo_cliente && tipo_cliente !== "persona") {
+        throw new Error("Las reservas se registran solo para huéspedes (persona natural).");
+    }
     const usuarioId = usuarioActualId();
     if (!Number.isInteger(Number(usuarioId)) || Number(usuarioId) <= 0) {
         throw new Error("No se pudo identificar al usuario que registra la reserva.");
@@ -489,6 +604,40 @@ export const registrarReserva = async ({
     );
     if (!Number.isFinite(nochesReserva) || nochesReserva <= 0) {
         throw new Error("La fecha de salida debe ser posterior a la fecha de entrada.");
+    }
+
+    // Los acompañantes deben ser huéspedes ya registrados (persona).
+    const solicitudAcompanantes = Array.isArray(acompanantes) ? acompanantes : [];
+    const idsAcompanantes = solicitudAcompanantes.map((acompanante) =>
+        Number(acompanante?.id_persona ?? acompanante?.persona?.id_persona)
+    );
+    if (idsAcompanantes.some((id) => !Number.isInteger(id) || id <= 0)) {
+        throw new Error("Uno de los acompañantes no es un huésped registrado válido.");
+    }
+    if (new Set(idsAcompanantes).size !== idsAcompanantes.length) {
+        throw new Error("No puedes registrar al mismo acompañante dos veces.");
+    }
+    const cantidadHuespedes = cantidad_huespedes == null
+        ? idsAcompanantes.length + 1
+        : Number(cantidad_huespedes);
+    if (!Number.isInteger(cantidadHuespedes) || cantidadHuespedes < 1) {
+        throw new Error("La cantidad de huéspedes debe ser un número entero mayor a cero.");
+    }
+    if (idsAcompanantes.length !== cantidadHuespedes - 1) {
+        throw new Error(
+            `La reserva es para ${cantidadHuespedes} huésped(es), incluido el principal. ` +
+            `Debes registrar exactamente ${cantidadHuespedes - 1} acompañante(s).`
+        );
+    }
+    const personasAcompanantes = await leerPersonasPorIds(idsAcompanantes);
+    if (personasAcompanantes.length !== idsAcompanantes.length) {
+        throw new Error("Uno de los acompañantes ya no existe o fue dado de baja. Actualiza la lista.");
+    }
+    const documentosAcompanantes = personasAcompanantes
+        .map((acompanante) => String(acompanante.n_documento || "").trim())
+        .filter(Boolean);
+    if (new Set(documentosAcompanantes).size !== documentosAcompanantes.length) {
+        throw new Error("Hay acompañantes con el mismo documento registrado.");
     }
 
     const disponibles = await buscarDisponibilidadHabitaciones({ f_entrada, f_salida });
@@ -507,31 +656,38 @@ export const registrarReserva = async ({
     let clienteId = Number(id_cliente);
     let clienteDetalle;
     if (!Number.isInteger(clienteId) || clienteId <= 0) {
-        if (!["persona", "empresa"].includes(tipo_cliente)) throw new Error("Selecciona o registra un huésped válido.");
-        if (tipo_cliente === "persona") {
-            if (!persona?.id_tipoidentidad || !persona?.id_distrito || !persona?.nombre?.trim()
-                || !persona?.ap_paterno?.trim() || !/^\d{8,12}$/.test(String(persona?.n_documento || ""))) {
-                throw new Error("Completa tipo y número de documento, nombres, apellido paterno y distrito del huésped.");
-            }
-        } else if (!/^\d{11}$/.test(String(empresa?.ruc || ""))
-            || !empresa?.razon_social?.trim()) {
-            throw new Error("Ingresa un RUC de 11 dígitos y la razón social.");
+        if (tipo_cliente !== "persona") throw new Error("Selecciona un huésped registrado para la reserva.");
+        if (!persona?.id_tipoidentidad || !persona?.id_distrito || !persona?.nombre?.trim()
+            || !persona?.ap_paterno?.trim() || !/^\d{8,12}$/.test(String(persona?.n_documento || ""))) {
+            throw new Error("Completa tipo y número de documento, nombres, apellido paterno y distrito del huésped.");
         }
         const clientes = await listarClientes();
-        clienteDetalle = await insertarClienteReserva({ tipo_cliente, persona, empresa }, clientes);
+        clienteDetalle = await insertarClienteReserva({ tipo_cliente: "persona", persona }, clientes);
         clienteId = clienteDetalle.id_cliente;
     } else {
         const clientes = await listarClientes();
         clienteDetalle = clientes.find((cliente) => String(cliente.id_cliente) === String(clienteId));
         if (!clienteDetalle) throw new Error("El huésped seleccionado no existe o está inactivo.");
     }
+    if (clienteDetalle?.id_empresa || clienteDetalle?.tipo_cliente === "empresa") {
+        throw new Error("Selecciona un huésped persona natural; las empresas no se registran como huéspedes.");
+    }
     if (!Number.isInteger(clienteId) || clienteId <= 0) throw new Error("No se pudo identificar al cliente de la reserva.");
-    const tipoDocumentoReserva = clienteDetalle
-        ? clienteDetalle.tipo_cliente === "empresa" || clienteDetalle.id_empresa ? "FACTURA" : "BOLETA"
-        : tipo_cliente === "empresa" ? "FACTURA" : "BOLETA";
-    const documentoReserva = clienteDetalle?.documento
-        ?? (tipo_cliente === "empresa" ? empresa?.ruc : persona?.n_documento);
 
+    const documentoReserva = String(clienteDetalle?.documento || persona?.n_documento || "").trim();
+    if (documentoReserva && documentosAcompanantes.includes(documentoReserva)) {
+        throw new Error("El huésped principal no puede registrarse también como acompañante.");
+    }
+
+    const tipoDocumentoReserva = String(tipo_documento || "BOLETA").trim().toUpperCase();
+    if (!["BOLETA", "FACTURA"].includes(tipoDocumentoReserva)) {
+        throw new Error("Selecciona boleta o factura como comprobante solicitado.");
+    }
+    if (tipoDocumentoReserva === "FACTURA" && !/^\d{11}$/.test(documentoReserva)) {
+        throw new Error("Para emitir factura el huésped debe tener RUC de 11 dígitos. Selecciona boleta o registra el RUC del huésped.");
+    }
+
+    const huespedesTotal = cantidadHuespedes;
     const reserva = await insertarFila("recepcion", {
         id_cliente: clienteId,
         id_habitacion: habitacionId,
@@ -550,12 +706,34 @@ export const registrarReserva = async ({
         f_salidac: null,
     });
 
+    try {
+        for (const acompanante of personasAcompanantes) {
+            await insertarFila("auditoria", filaAcompanante(reserva.id_recepcion, acompanante.id_persona));
+        }
+    } catch (errorAcompanantes) {
+        // No dejamos una reserva sin sus acompañantes: se anula la recepción
+        // y se informa para que el usuario vuelva a intentarlo.
+        try {
+            await darBajaFila("recepcion", "id_recepcion", reserva.id_recepcion);
+        } catch {
+            // Si tampoco se puede anular, el mensaje igualmente advierte del problema.
+        }
+        throw new Error(`No se pudieron guardar los acompañantes y la reserva no se completó: ${errorAcompanantes.message}`);
+    }
+
     invalidarCatalogosReportes();
     return {
         ...reserva,
         huespedes: huespedesTotal,
+        tipo_documento: tipoDocumentoReserva,
+        acompanantes: personasAcompanantes.map((acompanante) => ({
+            id_persona: acompanante.id_persona,
+            nombre: nombrePersona(acompanante),
+            documento: acompanante.n_documento || "",
+            email: acompanante.email || "",
+        })),
         cliente_nombre: clienteDetalle?.nombre || "",
-        cliente_documento: documentoReserva || "",
+        cliente_documento: documentoReserva,
         cliente_email: clienteDetalle?.email || persona?.email || "",
     };
 };

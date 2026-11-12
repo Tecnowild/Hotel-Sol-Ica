@@ -6,6 +6,7 @@ export const crearEnlaceCorreoReserva = (reserva, correo) => {
         throw new Error("Ingresa un correo electrónico válido para preparar el mensaje.");
     }
 
+    const acompanantes = Array.isArray(reserva.acompanantes) ? reserva.acompanantes : [];
     const asunto = `Confirmación de reserva #${reserva.id_recepcion} - Hotel Sol Ica`;
     const cuerpo = [
         `Hola ${reserva.cliente_nombre || "huésped"},`,
@@ -15,6 +16,15 @@ export const crearEnlaceCorreoReserva = (reserva, correo) => {
         `Entrada: ${fecha(reserva.f_entrada)}`,
         `Salida: ${fecha(reserva.f_salida)}`,
         `Huéspedes: ${reserva.huespedes}`,
+        `Acompañantes: ${
+            acompanantes.length
+                ? acompanantes
+                    .map((acompanante) =>
+                        `${acompanante.nombre}${acompanante.documento ? ` (${acompanante.documento})` : ""}`
+                    )
+                    .join(", ")
+                : "Ninguno (viaja solo)"
+        }`,
         `Total reservado: S/ ${Number(reserva.d_inicial || 0).toFixed(2)}`,
         `Estado: ${reserva.estado_nombre || "Pendiente de check-in"}`,
         "",
