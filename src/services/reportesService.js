@@ -145,7 +145,7 @@ export const cargarCatalogosReportes = async () => {
         leerTodos(() => supabase.from("persona").select("*").eq("estado", "1")),
         leerTodos(() => supabase.from("empresa").select("*").eq("estado", "1")),
         leerTodos(() => supabase.from("cliente").select("*").eq("estado", "1")),
-        leerTodos(() => supabase.from("usuario").select("*").eq("estado", "1")),
+        leerTodos(() => supabase.from("usuario").select("id_usuario,logeo").eq("estado", "1")),
         leerTodos(() => supabase.from("habitacion").select("*").eq("estado", "1")),
         leerTodos(() => supabase.from("categoria_habitacion").select("*").eq("estado", "1")),
         leerTodos(() => supabase.from("estado_habitacion").select("*").eq("estado", "1")),

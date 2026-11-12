@@ -1,5 +1,19 @@
 const supabase = require("../config/supabase");
 
+const MODULOS_POR_ROL = {
+    ADMINISTRADOR: null,
+    GERENTE: ["CLIENTES", "RECEPCION", "HABITACIONES", "CAJA", "VENTAS", "REPORTES"],
+    SUPERVISOR: ["CLIENTES", "RECEPCION", "HABITACIONES", "CAJA", "VENTAS"],
+    RECEPCIONISTA: ["CLIENTES", "RECEPCION", "HABITACIONES"],
+    CAJERO: ["CLIENTES", "RECEPCION", "CAJA", "VENTAS"],
+    "OPERACIONES/LIMPIEZA": ["HABITACIONES"],
+    "OPERACIONES Y LIMPIEZA": ["HABITACIONES"],
+    CLIENTE: []
+};
+
+const normalizarRol = (nombre) =>
+    String(nombre || "").trim().toUpperCase().replace(/\s*\/\s*/g, "/");
+
 const obtenerPermisosUsuario = async (idUsuario) => {
     const { data: asignaciones, error: errorAsignaciones } = await supabase
         .from("usuario_rol")
@@ -12,9 +26,13 @@ const obtenerPermisosUsuario = async (idUsuario) => {
         throw errorAsignaciones;
     }
 
-    const idsRolesAsignados = [
-        ...new Set((asignaciones || []).map((fila) => fila.id_rol))
-    ];
+    if ((asignaciones || []).length > 1) {
+        throw new Error(
+            `El usuario ${idUsuario} tiene más de un rol activo. Debe conservar solo uno.`
+        );
+    }
+
+    const idsRolesAsignados = [...new Set((asignaciones || []).map((fila) => fila.id_rol))];
     if (idsRolesAsignados.length === 0) {
         return { roles: [], modulos: [] };
     }
@@ -29,68 +47,41 @@ const obtenerPermisosUsuario = async (idUsuario) => {
         throw errorRoles;
     }
 
-    const idsRolesActivos = (roles || []).map((rol) => rol.id_rol);
-    if (idsRolesActivos.length === 0) {
+    const rol = (roles || [])[0];
+    if (!rol) {
         return { roles: [], modulos: [] };
     }
 
-    const { data: asignacionesPermiso, error: errorPermisos } = await supabase
-        .from("rol_permiso")
-        .select("id_permiso")
-        .in("id_rol", idsRolesActivos)
-        .eq("concedido", "1")
-        .eq("estado", "1");
-
-    if (errorPermisos) {
-        throw errorPermisos;
+    const nombreRol = normalizarRol(rol.n_rol);
+    const modulosPermitidos = MODULOS_POR_ROL[nombreRol];
+    if (!modulosPermitidos) {
+        if (nombreRol !== "ADMINISTRADOR") {
+            return { roles: [rol.n_rol], modulos: [] };
+        }
     }
 
-    const idsPermisos = [
-        ...new Set((asignacionesPermiso || []).map((fila) => fila.id_permiso))
-    ];
-    if (idsPermisos.length === 0) {
-        return {
-            roles: (roles || []).map((rol) => rol.n_rol),
-            modulos: []
-        };
-    }
-
-    const { data: permisos, error: errorDetallePermisos } = await supabase
-        .from("permiso")
-        .select("id_permiso,n_permiso,id_modulo")
-        .in("id_permiso", idsPermisos)
-        .eq("estado", "1");
-
-    if (errorDetallePermisos) {
-        throw errorDetallePermisos;
-    }
-
-    const idsModulos = [
-        ...new Set((permisos || [])
-            .filter((permiso) => String(permiso.n_permiso).endsWith("_TOTAL"))
-            .map((permiso) => permiso.id_modulo))
-    ];
-    if (idsModulos.length === 0) {
-        return {
-            roles: (roles || []).map((rol) => rol.n_rol),
-            modulos: []
-        };
-    }
-
-    const { data: modulos, errorModulos } = await supabase
+    const { data: modulosActivos, errorModulos } = await supabase
         .from("modulo")
-        .select("id_modulo,n_modulo")
-        .in("id_modulo", idsModulos)
+        .select("n_modulo")
         .eq("estado", "1");
 
     if (errorModulos) {
         throw errorModulos;
     }
 
+    const nombresModulos = [...new Set((modulosActivos || [])
+        .map((modulo) => String(modulo.n_modulo || "").trim())
+        .filter(Boolean))];
+    const modulos = nombreRol === "ADMINISTRADOR"
+        ? nombresModulos
+        : nombresModulos.filter((nombre) =>
+            modulosPermitidos.includes(nombre.toUpperCase())
+        );
+
     return {
-        roles: (roles || []).map((rol) => rol.n_rol),
-        modulos: [...new Set((modulos || []).map((modulo) => modulo.n_modulo))]
+        roles: [rol.n_rol],
+        modulos
     };
 };
 
-module.exports = { obtenerPermisosUsuario };
+module.exports = { MODULOS_POR_ROL, normalizarRol, obtenerPermisosUsuario };

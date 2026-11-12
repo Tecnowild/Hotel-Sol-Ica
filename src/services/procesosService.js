@@ -170,7 +170,7 @@ export const listarClientes = async () => {
 export const listarCatalogosPago = async () => {
     const [cajas, usuarios, metodos, conceptos, tipos] = await Promise.all([
         leer(supabase.from("caja").select("*").eq("estado", "1").order("n_caja")),
-        leer(supabase.from("usuario").select("*").eq("estado", "1").order("logeo")),
+        leer(supabase.from("usuario").select("id_usuario,logeo").eq("estado", "1").order("logeo")),
         leer(supabase.from("metodo_pago").select("*").eq("estado", "1").order("n_metodopago")),
         leer(supabase.from("concepto_caja").select("*").eq("estado", "1").order("n_concepto")),
         leer(supabase.from("tipo_movimiento_caja").select("*").eq("estado", "1")),
@@ -996,7 +996,7 @@ export const listarAperturas = async () => {
     const [aperturas, cajas, usuarios] = await Promise.all([
         leer(supabase.from("apertura_caja").select("*").eq("estado", "1").order("id_aperturacaja", { ascending: false })),
         leer(supabase.from("caja").select("*").eq("estado", "1")),
-        leer(supabase.from("usuario").select("*").eq("estado", "1")),
+        leer(supabase.from("usuario").select("id_usuario,logeo").eq("estado", "1")),
     ]);
     return aperturas.map((a) => ({
         ...a,
@@ -1431,7 +1431,7 @@ export const listarPagos = async () => {
         leer(supabase.from("concepto_caja").select("*").eq("estado", "1")),
         leer(supabase.from("tipo_movimiento_caja").select("*").eq("estado", "1")),
         leer(supabase.from("metodo_pago").select("*").eq("estado", "1")),
-        leer(supabase.from("usuario").select("*").eq("estado", "1")),
+        leer(supabase.from("usuario").select("id_usuario,logeo").eq("estado", "1")),
         listarRecepciones(),
     ]);
 

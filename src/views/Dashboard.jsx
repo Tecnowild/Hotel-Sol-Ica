@@ -628,12 +628,6 @@ const Dashboard = () => {
                         <CrudModule key="reservas" entidadKey="reservas" />
                     )}
 
-                    {vista === "usuarios" && puedeAcceder(vista) && (
-                        <section className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-900">
-                            La administración directa de cuentas y contraseñas no está habilitada en el CRUD genérico para evitar exponer credenciales. Para asignar permisos, utiliza “Roles de usuarios”.
-                        </section>
-                    )}
-
                     {vista === "dashboard" && (
                     <>
 

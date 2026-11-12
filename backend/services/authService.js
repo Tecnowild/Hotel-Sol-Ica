@@ -1,7 +1,9 @@
 const {
-    buscarUsuarioPorLogeo
+    buscarUsuarioPorLogeo,
+    guardarHashClave
 } = require("../models/usuarioModel");
 const { obtenerPermisosUsuario } = require("../models/permisosModel");
+const { hashearClave, verificarClave } = require("../utils/password");
 const { crearTokenSesion } = require("../utils/sessionToken");
 
 const autenticarUsuario = async (logeo, clave) => {
@@ -23,19 +25,22 @@ const autenticarUsuario = async (logeo, clave) => {
         };
     }
 
-    /*
-     * Comparación temporal basada en la estructura actual
-     * de tu tabla usuario.
-     *
-     * Si posteriormente confirmamos que 'clave' está
-     * almacenada mediante hash, reemplazaremos esta
-     * comparación por bcrypt.
-     */
-    if (String(usuario.clave) !== String(clave)) {
+    const claveValida = usuario.clave_hash
+        ? await verificarClave(clave, usuario.clave_hash)
+        : String(usuario.clave) === String(clave);
+    if (!claveValida) {
         return {
             success: false,
             message: "El usuario o la contraseña son incorrectos."
         };
+    }
+
+    if (
+        !usuario.clave_hash &&
+        usuario.clave &&
+        usuario.credencialDisponible !== false
+    ) {
+        await guardarHashClave(usuario.id_usuario, await hashearClave(clave));
     }
 
     const permisos = await obtenerPermisosUsuario(usuario.id_usuario);

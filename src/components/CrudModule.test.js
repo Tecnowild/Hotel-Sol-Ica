@@ -10,6 +10,13 @@ import {
     listarPaginado,
 } from "../services/crudService";
 import { consultarDocumento } from "../services/factilizaService";
+import {
+    actualizarUsuarioAdmin,
+    crearUsuarioAdmin,
+    darDeBajaUsuarioAdmin,
+    listarUsuariosAdmin,
+    obtenerOpcionesUsuariosAdmin,
+} from "../services/adminUsuariosService";
 
 jest.mock("../services/crudService", () => ({
     listar: jest.fn(),
@@ -24,6 +31,14 @@ jest.mock("../services/crudService", () => ({
 
 jest.mock("../services/factilizaService", () => ({
     consultarDocumento: jest.fn(),
+}));
+
+jest.mock("../services/adminUsuariosService", () => ({
+    actualizarUsuarioAdmin: jest.fn(),
+    crearUsuarioAdmin: jest.fn(),
+    darDeBajaUsuarioAdmin: jest.fn(),
+    listarUsuariosAdmin: jest.fn(),
+    obtenerOpcionesUsuariosAdmin: jest.fn(),
 }));
 
 beforeEach(() => {
@@ -69,8 +84,80 @@ beforeEach(() => {
     });
     consultarDocumento.mockReset();
     insertar.mockReset().mockResolvedValue(undefined);
+    listarUsuariosAdmin.mockReset().mockResolvedValue({
+        data: [],
+        total: 0,
+        pagina: 1,
+        totalPaginas: 1,
+    });
+    obtenerOpcionesUsuariosAdmin.mockReset().mockResolvedValue({
+        tipos: [
+            { id_tipousuario: 1, n_tipousuario: "PERSONAL" },
+            { id_tipousuario: 2, n_tipousuario: "CLIENTE" },
+        ],
+        empleados: [{ id_empleado: 5, nombre: "Ana Pérez" }],
+        roles: [
+            { id_rol: 1, n_rol: "ADMINISTRADOR" },
+            { id_rol: 2, n_rol: "RECEPCIONISTA" },
+            { id_rol: 3, n_rol: "CLIENTE" },
+        ],
+    });
+    crearUsuarioAdmin.mockReset().mockResolvedValue(undefined);
+    actualizarUsuarioAdmin.mockReset().mockResolvedValue(undefined);
+    darDeBajaUsuarioAdmin.mockReset().mockResolvedValue(undefined);
     buscarPersonaPorDni.mockReset();
     guardarEmpleadoConPersona.mockReset().mockResolvedValue(undefined);
+});
+
+test("crea una cuenta del personal con un único rol desde el CRUD estándar", async () => {
+    render(<CrudModule entidadKey="usuarios" />);
+    await waitFor(() => expect(listarUsuariosAdmin).toHaveBeenCalled());
+    await userEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+
+    await userEvent.type(screen.getByLabelText("Usuario *"), "recepcion2");
+    expect(screen.getByLabelText("Tipo de usuario *").querySelector('option[value="2"]')).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Rol *").querySelector('option[value="3"]')).not.toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Tipo de usuario *"), "1");
+    await userEvent.selectOptions(screen.getByLabelText("Empleado *"), "5");
+    await userEvent.selectOptions(screen.getByLabelText("Rol *"), "2");
+    await userEvent.type(screen.getByLabelText("Contraseña inicial / nueva *"), "clave-segura-123");
+    await userEvent.click(screen.getByRole("button", { name: "Guardar" }));
+
+    await waitFor(() => expect(crearUsuarioAdmin).toHaveBeenCalledWith({
+        logeo: "recepcion2",
+        id_tipousuario: 1,
+        id_empleado: 5,
+        id_rol: 2,
+        clave: "clave-segura-123",
+    }));
+    expect(insertar).not.toHaveBeenCalled();
+});
+
+test("permite editar datos/rol y dejar vacía la contraseña para conservarla", async () => {
+    listarUsuariosAdmin.mockResolvedValue({
+        data: [{
+            id_usuario: 18,
+            logeo: "recepcion",
+            id_tipousuario: 1,
+            id_empleado: 5,
+            id_rol: 2,
+        }],
+        total: 1,
+        pagina: 1,
+        totalPaginas: 1,
+    });
+    render(<CrudModule entidadKey="usuarios" />);
+    await userEvent.click(await screen.findByRole("button", { name: "Editar" }));
+    expect(screen.getByLabelText("Contraseña inicial / nueva")).toHaveValue("");
+    await userEvent.click(screen.getByRole("button", { name: "Actualizar" }));
+
+    await waitFor(() => expect(actualizarUsuarioAdmin).toHaveBeenCalledWith(18, {
+        logeo: "recepcion",
+        id_tipousuario: 1,
+        id_empleado: 5,
+        id_rol: 2,
+        clave: null,
+    }));
 });
 
 test("consulta DNI y precarga los datos de persona sin guardar el registro", async () => {
@@ -199,19 +286,12 @@ test("reutiliza los datos de una persona ya registrada con el DNI consultado", a
     expect(screen.getByLabelText("Distrito de la persona")).toHaveValue("1");
 });
 
-test("filtra usuarios por nombre en la asignación de roles", async () => {
+test("mantiene las asignaciones de rol en solo lectura fuera del CRUD de Usuarios", async () => {
     render(<CrudModule entidadKey="usuario_rol" />);
     await waitFor(() => expect(screen.queryByText("Cargando...")).not.toBeInTheDocument());
-    await userEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
-
-    const buscarUsuario = screen.getByLabelText("Buscar usuario");
-    const selectorUsuario = screen.getByLabelText("Usuario *");
-    expect(selectorUsuario.querySelectorAll("option")).toHaveLength(4);
-
-    await userEvent.type(buscarUsuario, "recep");
-    expect(selectorUsuario.querySelector('option[value="2"]')).toHaveTextContent("recepcionista");
-    expect(selectorUsuario.querySelector('option[value="1"]')).not.toBeInTheDocument();
-    expect(screen.getByText("1 de 3 usuarios")).toBeInTheDocument();
+    expect(screen.getByText("Asignaciones de rol vigentes. Se administran desde el CRUD de Usuarios.")).toBeInTheDocument();
+    expect(screen.getByText("Solo lectura")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nuevo" })).not.toBeInTheDocument();
 });
 
 test("la paginación cambia de página y ajusta la cantidad de registros mostrados", async () => {

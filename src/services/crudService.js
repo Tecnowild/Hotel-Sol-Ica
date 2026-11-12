@@ -30,7 +30,7 @@ const lanzar = (error) => {
 export const listar = async (tabla, pk) => {
     const { data, error } = await supabase
         .from(tabla)
-        .select("*")
+        .select(tabla === "usuario" ? "id_usuario,logeo" : "*")
         .eq("estado", "1")
         .order(pk, { ascending: true });
     lanzar(error);
@@ -58,7 +58,7 @@ export const listarPaginado = async (
 
     let consulta = supabase
         .from(tabla)
-        .select("*", { count: "exact" })
+        .select(tabla === "usuario" ? "id_usuario,logeo" : "*", { count: "exact" })
         .eq("estado", "1");
 
     const termino = String(busqueda || "").trim().replace(/[%_,()]/g, " ").trim();
@@ -90,6 +90,10 @@ export const listarPaginado = async (
 };
 
 export const insertar = async (tabla, fila) => {
+    if (tabla === "usuario") {
+        throw new Error("Las cuentas de usuario solo se gestionan desde el CRUD protegido de Usuarios.");
+    }
+
     const { error } = await supabase.from(tabla).insert([{
         ...fila,
         usucre: AUD.usuario,
@@ -177,6 +181,10 @@ export const guardarEmpleadoConPersona = async ({ empleado, persona }) => {
 };
 
 export const actualizar = async (tabla, pk, id, fila) => {
+    if (tabla === "usuario") {
+        throw new Error("Las cuentas de usuario solo se gestionan desde el CRUD protegido de Usuarios.");
+    }
+
     const { error } = await supabase.from(tabla).update({
         ...fila,
         usumod: AUD.usuario,
@@ -188,6 +196,10 @@ export const actualizar = async (tabla, pk, id, fila) => {
 
 // Eliminar = baja lógica (estado = '0'), igual que el resto del sistema.
 export const eliminar = async (tabla, pk, id) => {
+    if (tabla === "usuario") {
+        throw new Error("Las cuentas de usuario solo se gestionan desde el CRUD protegido de Usuarios.");
+    }
+
     const { error } = await supabase.from(tabla).update({
         estado: "0",
         usumod: AUD.usuario,

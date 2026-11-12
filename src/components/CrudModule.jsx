@@ -13,13 +13,21 @@ import {
 } from "../services/crudService";
 import { consultarDocumento } from "../services/factilizaService";
 import { invalidarCatalogosReportes } from "../services/reportesService";
+import {
+    actualizarUsuarioAdmin,
+    crearUsuarioAdmin,
+    darDeBajaUsuarioAdmin,
+    listarUsuariosAdmin,
+    obtenerOpcionesUsuariosAdmin,
+} from "../services/adminUsuariosService";
 
 // Módulo CRUD genérico: sirve para cualquier entidad de config/entidades.js
 const CrudModule = ({ entidadKey }) => {
 
     const entidad = ENTIDADES[entidadKey];
     const { tabla, pk, campos } = entidad;
-    const visibles = campos.filter((c) => !c.oculto);
+    const camposFormulario = campos.filter((c) => !c.oculto);
+    const visibles = campos.filter((c) => !c.oculto && !c.soloFormulario);
     const soloLectura = Boolean(entidad.soloLectura);
     const columnas = visibles.length + (soloLectura ? 0 : 1);
 
@@ -84,11 +92,20 @@ const CrudModule = ({ entidadKey }) => {
                 unicas.push(r);
             }
         }
-        const resultados = await Promise.all(unicas.map((r) => listar(r.tabla, r.pk)));
+        const resultados = entidad.adminUsuarios
+            ? [await obtenerOpcionesUsuariosAdmin()]
+            : await Promise.all(unicas.map((r) => listar(r.tabla, r.pk)));
         const nuevasRefs = {};
-        unicas.forEach((r, i) => {
-            nuevasRefs[r.tabla] = resultados[i];
-        });
+        if (entidad.adminUsuarios) {
+            const opciones = resultados[0];
+            nuevasRefs.tipo_usuario = opciones.tipos || [];
+            nuevasRefs.empleado = opciones.empleados || [];
+            nuevasRefs.rol = opciones.roles || [];
+        } else {
+            unicas.forEach((r, i) => {
+                nuevasRefs[r.tabla] = resultados[i];
+            });
+        }
         setRefs(nuevasRefs);
         setErrorRefs("");
     }, [campos, entidad]);
@@ -105,13 +122,19 @@ const CrudModule = ({ entidadKey }) => {
         setCargando(true);
         setErrorCarga("");
         try {
-            const resultado = await listarPaginado(tabla, pk, {
-                pagina,
-                pageSize,
-                busqueda: busquedaDebounced,
-                columnasBusqueda: entidad.buscarEn || [],
-                filtros,
-            });
+            const resultado = entidad.adminUsuarios
+                ? await listarUsuariosAdmin({
+                    pagina,
+                    pageSize,
+                    busqueda: busquedaDebounced,
+                })
+                : await listarPaginado(tabla, pk, {
+                    pagina,
+                    pageSize,
+                    busqueda: busquedaDebounced,
+                    columnasBusqueda: entidad.buscarEn || [],
+                    filtros,
+                });
             if (solicitud !== solicitudActual.current) return resultado;
 
             if (pagina > resultado.totalPaginas) {
@@ -193,7 +216,7 @@ const CrudModule = ({ entidadKey }) => {
 
     const abrirEditar = (fila) => {
         const v = {};
-        visibles.forEach((c) => {
+        camposFormulario.forEach((c) => {
             let x = fila[c.name] ?? "";
             if (c.type === "date" && x) x = String(x).slice(0, 10);
             v[c.name] = x;
@@ -365,8 +388,13 @@ const CrudModule = ({ entidadKey }) => {
             }
             let v = String(valores[c.name] ?? "").trim();
 
-            if (c.required && !v) {
+            const requerido = c.required && !(editandoId && c.requiredOnCreate);
+            if (requerido && !v) {
                 avisar(`El campo "${c.label}" es obligatorio.`, false);
+                return null;
+            }
+            if (v && c.minLength && v.length < c.minLength) {
+                avisar(`"${c.label}" debe tener al menos ${c.minLength} caracteres.`, false);
                 return null;
             }
             if (v && c.pattern && !c.pattern.test(v)) {
@@ -464,17 +492,34 @@ const CrudModule = ({ entidadKey }) => {
             return;
         }
 
-        ejecutar(() => insertar(tabla, datos), "Registro guardado correctamente.");
+        ejecutar(
+            () => entidad.adminUsuarios
+                ? crearUsuarioAdmin(datos)
+                : insertar(tabla, datos),
+            entidad.adminUsuarios ? "Usuario creado correctamente." : "Registro guardado correctamente."
+        );
     };
 
     const actualizarRegistro = () => {
         const datos = validar();
-        if (datos) ejecutar(() => actualizar(tabla, pk, editandoId, datos), "Registro actualizado correctamente.");
+        if (datos) {
+            ejecutar(
+                () => entidad.adminUsuarios
+                    ? actualizarUsuarioAdmin(editandoId, datos)
+                    : actualizar(tabla, pk, editandoId, datos),
+                entidad.adminUsuarios ? "Usuario actualizado correctamente." : "Registro actualizado correctamente."
+            );
+        }
     };
 
     const borrar = (fila) => {
         if (window.confirm("¿Seguro que deseas dar de baja este registro?")) {
-            ejecutar(() => eliminar(tabla, pk, fila[pk]), "Registro dado de baja correctamente.");
+            ejecutar(
+                () => entidad.adminUsuarios
+                    ? darDeBajaUsuarioAdmin(fila[pk])
+                    : eliminar(tabla, pk, fila[pk]),
+                "Registro dado de baja correctamente."
+            );
         }
     };
 
@@ -673,7 +718,7 @@ const CrudModule = ({ entidadKey }) => {
                     )}
 
                     <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                        {visibles.map((c) => {
+                        {camposFormulario.map((c) => {
                             const referenciaAutocompletado = c.autocompletarDesde
                                 ? (refs[c.autocompletarDesde.tabla] || []).find(
                                     (fila) => String(fila[c.autocompletarDesde.pk]) ===
@@ -691,7 +736,19 @@ const CrudModule = ({ entidadKey }) => {
                                 ? entidad.obtenerNumeroPiso?.(valores.id_piso, refs)
                                 : null;
                             const opcionesReferencia = c.ref
-                                ? refs[c.ref.tabla] || []
+                                ? (refs[c.ref.tabla] || []).filter((fila) => {
+                                    const nombre = String(c.ref.label(fila, refs) || "").trim().toUpperCase();
+                                    if (
+                                        c.ref.excluirTexto &&
+                                        nombre.includes(c.ref.excluirTexto.toUpperCase())
+                                    ) {
+                                        return false;
+                                    }
+                                    return !(
+                                        c.ref.excluirTextoExacto &&
+                                        nombre === c.ref.excluirTextoExacto.toUpperCase()
+                                    );
+                                })
                                 : [];
                             const busquedaReferencia = String(busquedasReferencia[c.name] || "")
                                 .trim()
@@ -717,7 +774,7 @@ const CrudModule = ({ entidadKey }) => {
 
                             return (
                             <label key={c.name} className="block text-xs font-semibold text-slate-700">
-                                {c.label}{c.required && " *"}
+                                {c.label}{c.required && (!editandoId || !c.requiredOnCreate) && " *"}
 
                                 {c.type === "select" ? (
                                     <>
@@ -736,7 +793,7 @@ const CrudModule = ({ entidadKey }) => {
                                         )}
                                         <select
                                             name={c.name}
-                                            aria-label={`${c.label}${c.required ? " *" : ""}`}
+                                            aria-label={`${c.label}${c.required && (!editandoId || !c.requiredOnCreate) ? " *" : ""}`}
                                             value={valores[c.name] ?? ""}
                                             onChange={cambiar}
                                             className={`${inputClase} mt-1.5 font-normal`}
@@ -748,7 +805,7 @@ const CrudModule = ({ entidadKey }) => {
                                                         {c.ref.label(r, refs)}
                                                     </option>
                                                 ))
-                                                : c.options.map(normalizar).map((o) => (
+                                                : (c.options || []).map(normalizar).map((o) => (
                                                     <option key={o.value} value={o.value}>{o.label}</option>
                                                 ))}
                                         </select>
@@ -764,9 +821,10 @@ const CrudModule = ({ entidadKey }) => {
                                     <input
                                         name={c.name}
                                         type={c.type}
-                                        aria-label={`${c.label}${c.required ? " *" : ""}`}
+                                        aria-label={`${c.label}${c.required && (!editandoId || !c.requiredOnCreate) ? " *" : ""}`}
                                         min={c.min}
                                         step={c.type === "number" ? "0.01" : undefined}
+                                        minLength={c.minLength}
                                         value={valores[c.name] ?? ""}
                                         onChange={cambiar}
                                         readOnly={bloqueadoPorAutocompletado}
@@ -791,6 +849,11 @@ const CrudModule = ({ entidadKey }) => {
                                 {c.autocompletarDesde && !bloqueadoPorAutocompletado && valores[c.autocompletarDesde.campo] && (
                                     <span className="mt-1 block text-[11px] font-normal text-amber-700">
                                         La categoría seleccionada no tiene un precio definido en el catálogo; ingresa la tarifa manualmente.
+                                    </span>
+                                )}
+                                {c.ayuda && (
+                                    <span className="mt-1 block text-[11px] font-normal text-slate-500">
+                                        {c.ayuda}
                                     </span>
                                 )}
                             </label>

@@ -35,17 +35,41 @@ project directory.
 
 The backend signs login sessions for eight hours. In production,
 `backend/.env` must define a long, random `SESSION_SECRET` that is stable across
-backend restarts and instances. The login loads each user's active roles and
-granted modules from the existing RBAC tables; “Remember me” stores the
-session persistently only for its remaining eight-hour lifetime.
+backend restarts and instances. “Remember me” stores the signed session
+persistently only for its remaining eight-hour lifetime.
 
-The login and application navigation use the active roles and module grants
-stored in the existing RBAC tables. Supabase data queries continue using the
-project's existing publishable-key connection so the current hotel workflows
-keep working without a new server secret. This protects the application
-interface, but does not stop someone from calling Supabase directly if the
-current anonymous/RLS policies allow it. Database-level protection requires
-reviewing those policies; no Supabase tables or columns are added here.
+The login reads each user's active role from `usuario_rol` and applies the
+hotel's role-to-module policy in the backend. Each account must have one active
+role. `ADMINISTRADOR` receives every active module; `GERENTE` receives
+`CLIENTES`, `RECEPCION`, `HABITACIONES`, `CAJA`, `VENTAS`, and `REPORTES`;
+`SUPERVISOR` receives `CLIENTES`, `RECEPCION`, `HABITACIONES`, `CAJA`, and
+`VENTAS`; `RECEPCIONISTA` receives `CLIENTES`, `RECEPCION`, and `HABITACIONES`;
+`CAJERO` receives `CLIENTES`, `RECEPCION`, `CAJA`, and `VENTAS`; and
+`OPERACIONES/LIMPIEZA` receives `HABITACIONES`. Unknown roles receive no
+modules. The `CLIENTE` role is reserved for the future public customer portal.
+
+Supabase data queries continue using the project's existing publishable-key
+connection so the current hotel workflows keep working. Navigation and session
+claims enforce the application role policy, but they do not prevent direct
+Supabase requests if the current anonymous/RLS policies allow them. Database
+policies must also be reviewed for data-level enforcement.
+
+The staff Users CRUD uses authenticated backend routes and a server-only
+`SUPABASE_SERVICE_ROLE_KEY`; never expose this key in frontend variables or
+send it in chat. Password hashes are kept in the private `usuario_credencial`
+table, which denies access to public and authenticated client roles. Existing
+plaintext passwords are upgraded to salted scrypt hashes after a successful
+login once the database migration and server key are configured. New staff
+passwords are stored as hashes.
+
+Before deploying the staff Users CRUD, review and manually run
+[`backend/migrations/20261112_usuarios_roles_seguridad.sql`](./backend/migrations/20261112_usuarios_roles_seguridad.sql)
+in the Supabase SQL Editor. It creates private password storage, enforces one
+active role per account, caps active administrators at three, and prevents
+removing the last administrator. The script aborts if it finds duplicate
+active role assignments. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend
+environment only, then restart the backend. The application does not run this
+migration automatically.
 
 Factiliza is used to look up DNI and RUC data when creating a person or company,
 and when entering a new person or company in a reservation. Configure

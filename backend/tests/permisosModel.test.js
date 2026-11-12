@@ -12,18 +12,11 @@ const filas = {
         { id_rol: 1, n_rol: "ADMINISTRADOR", estado: "1" },
         { id_rol: 2, n_rol: "INACTIVO", estado: "0" }
     ],
-    rol_permiso: [
-        { id_permiso: 6, id_rol: 1, concedido: "1", estado: "1" },
-        { id_permiso: 7, id_rol: 1, concedido: "1", estado: "0" },
-        { id_permiso: 8, id_rol: 1, concedido: "1", estado: "1" }
-    ],
-    permiso: [
-        { id_permiso: 6, n_permiso: "USUARIOS_TOTAL", id_modulo: 4, estado: "1" },
-        { id_permiso: 8, n_permiso: "CLIENTES_LECTURA", id_modulo: 1, estado: "1" }
-    ],
     modulo: [
         { id_modulo: 4, n_modulo: "USUARIOS", estado: "1" },
-        { id_modulo: 1, n_modulo: "CLIENTES", estado: "1" }
+        { id_modulo: 1, n_modulo: "CLIENTES", estado: "1" },
+        { id_modulo: 2, n_modulo: "RECEPCION", estado: "1" },
+        { id_modulo: 3, n_modulo: "INACTIVO", estado: "0" }
     ]
 };
 
@@ -67,25 +60,73 @@ require.cache[rutaSupabase] = {
     exports: supabaseSimulado
 };
 
-const { obtenerPermisosUsuario } = require("../models/permisosModel");
+const {
+    MODULOS_POR_ROL,
+    obtenerPermisosUsuario
+} = require("../models/permisosModel");
 
-test("resolves only active roles and granted active module-wide permissions", async () => {
+test("defines the approved module access for each staff role", () => {
+    assert.deepEqual(MODULOS_POR_ROL, {
+        ADMINISTRADOR: null,
+        GERENTE: ["CLIENTES", "RECEPCION", "HABITACIONES", "CAJA", "VENTAS", "REPORTES"],
+        SUPERVISOR: ["CLIENTES", "RECEPCION", "HABITACIONES", "CAJA", "VENTAS"],
+        RECEPCIONISTA: ["CLIENTES", "RECEPCION", "HABITACIONES"],
+        CAJERO: ["CLIENTES", "RECEPCION", "CAJA", "VENTAS"],
+        "OPERACIONES/LIMPIEZA": ["HABITACIONES"],
+        "OPERACIONES Y LIMPIEZA": ["HABITACIONES"],
+        CLIENTE: []
+    });
+});
+
+test("resolves one active administrator role and every active module", async () => {
     const resultado = await obtenerPermisosUsuario(42);
 
     assert.deepEqual(resultado, {
         roles: ["ADMINISTRADOR"],
-        modulos: ["USUARIOS"]
+        modulos: ["USUARIOS", "CLIENTES", "RECEPCION"]
     });
 
     const consultaRoles = consultas.find((consulta) => consulta.tabla === "rol");
-    const consultaPermisos = consultas.find((consulta) => consulta.tabla === "rol_permiso");
     assert.ok(consultaRoles.filtros.some(
         (filtro) => filtro.campo === "estado" && filtro.valor === "1"
     ));
-    assert.ok(consultaPermisos.filtros.some(
-        (filtro) => filtro.campo === "concedido" && filtro.valor === "1"
-    ));
-    assert.ok(consultaPermisos.filtros.some(
+    const consultaModulos = consultas.find((consulta) => consulta.tabla === "modulo");
+    assert.ok(consultaModulos.filtros.some(
         (filtro) => filtro.campo === "estado" && filtro.valor === "1"
     ));
+});
+
+test("rejects more than one active role instead of combining their access", async () => {
+    filas.usuario_rol.push({
+        id_usuario: 42,
+        id_rol: 4,
+        vigente: "1",
+        estado: "1"
+    });
+
+    await assert.rejects(
+        obtenerPermisosUsuario(42),
+        /más de un rol activo/
+    );
+
+    filas.usuario_rol.pop();
+});
+
+test("applies the approved module policy to non-administrator roles", async () => {
+    filas.usuario_rol[0].id_rol = 5;
+    filas.rol.push({ id_rol: 5, n_rol: "RECEPCIONISTA", estado: "1" });
+    filas.modulo.push(
+        { id_modulo: 5, n_modulo: "HABITACIONES", estado: "1" },
+        { id_modulo: 6, n_modulo: "CAJA", estado: "1" }
+    );
+
+    const resultado = await obtenerPermisosUsuario(42);
+    assert.deepEqual(resultado, {
+        roles: ["RECEPCIONISTA"],
+        modulos: ["CLIENTES", "RECEPCION", "HABITACIONES"]
+    });
+
+    filas.usuario_rol[0].id_rol = 1;
+    filas.rol.pop();
+    filas.modulo.splice(-2);
 });

@@ -304,10 +304,11 @@ export const ENTIDADES = {
   // MÓDULO -> tabla modulo (opciones del menú del sistema)
   modulo: {
     titulo: "Módulos",
-    descripcion: "Módulos u opciones que componen el menú del sistema.",
+    descripcion: "Módulos activos del sistema. El acceso se define mediante la política de roles.",
     icono: "bi-grid",
     tabla: "modulo",
     pk: "id_modulo",
+    soloLectura: true,
     buscarEn: ["n_modulo", "descripcion"],
     campos: [
       { name: "n_modulo", label: "Nombre", type: "text", required: true },
@@ -320,10 +321,11 @@ export const ENTIDADES = {
   // ROL -> tabla rol
   rol: {
     titulo: "Roles",
-    descripcion: "Roles y niveles de acceso del sistema.",
+    descripcion: "Roles habilitados para las cuentas del personal.",
     icono: "bi-shield-lock",
     tabla: "rol",
     pk: "id_rol",
+    soloLectura: true,
     buscarEn: ["n_rol", "descripcion"],
     campos: [
       { name: "n_rol", label: "Nombre", type: "text", required: true },
@@ -496,10 +498,11 @@ export const ENTIDADES = {
   // ROL_PERMISO -> tabla rol_permiso
   rol_permiso: {
     titulo: "Permisos por rol",
-    descripcion: "Permisos concedidos a cada rol del sistema.",
+    descripcion: "La política de módulos se define en el backend según el rol.",
     icono: "bi-key",
     tabla: "rol_permiso",
     pk: "id_rolpermiso",
+    soloLectura: true,
     buscarEn: [],
     filtros: ["id_rol", "id_permiso", "concedido"],
     campos: [
@@ -515,10 +518,11 @@ export const ENTIDADES = {
   // USUARIO_ROL -> tabla usuario_rol
   usuario_rol: {
     titulo: "Roles de usuarios",
-    descripcion: "Asignación vigente de roles a los usuarios del sistema.",
+    descripcion: "Asignaciones de rol vigentes. Se administran desde el CRUD de Usuarios.",
     icono: "bi-person-check",
     tabla: "usuario_rol",
     pk: "id_usuariorol",
+    soloLectura: true,
     buscarEn: [],
     filtros: ["id_usuario", "id_rol", "vigente"],
     campos: [
@@ -530,6 +534,42 @@ export const ENTIDADES = {
       { name: "f_asignacion", label: "Fecha de asignación", type: "date", required: true },
       { name: "vigente", label: "Vigente", type: "select", required: true,
         options: [{ value: "1", label: "Sí" }, { value: "0", label: "No" }] },
+    ],
+  },
+
+  // USUARIOS -> gestión protegida por el backend para resguardar credenciales y rol único.
+  usuarios: {
+    titulo: "Usuarios",
+    descripcion: "Cuentas del personal y su único rol de acceso al sistema.",
+    icono: "bi-person-gear",
+    tabla: "usuario",
+    pk: "id_usuario",
+    adminUsuarios: true,
+    buscarEn: ["logeo"],
+    campos: [
+      { name: "logeo", label: "Usuario", type: "text", required: true,
+        maxLength: 50, placeholder: "Nombre de acceso" },
+      { name: "id_tipousuario", label: "Tipo de usuario", type: "select", required: true,
+        ref: {
+          tabla: "tipo_usuario",
+          pk: "id_tipousuario",
+          label: (r) => r.n_tipousuario,
+          excluirTexto: "CLIENTE",
+        } },
+      { name: "id_empleado", label: "Empleado", type: "select", required: true,
+        buscarReferencia: true,
+        ref: { tabla: "empleado", pk: "id_empleado", label: (r) => r.nombre } },
+      { name: "id_rol", label: "Rol", type: "select", required: true,
+        ref: {
+          tabla: "rol",
+          pk: "id_rol",
+          label: (r) => r.n_rol,
+          excluirTextoExacto: "CLIENTE",
+        } },
+      { name: "clave", label: "Contraseña inicial / nueva", type: "password",
+        required: true, requiredOnCreate: true, soloFormulario: true,
+        minLength: 10, placeholder: "Mínimo 10 caracteres",
+        ayuda: "Al editar, déjala vacía para conservar la contraseña actual." },
     ],
   },
 

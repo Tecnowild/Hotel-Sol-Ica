@@ -3,7 +3,7 @@ import { supabase } from "../config/supabase";
 export const probarConexionSupabase = async () => {
   const { data, error } = await supabase
     .from("usuario")
-    .select("*")
+    .select("id_usuario,logeo")
     .limit(1);
 
   if (error) {
