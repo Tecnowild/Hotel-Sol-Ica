@@ -53,15 +53,16 @@ const MODULO_POR_VISTA = {
 
 const MENU_CATEGORIAS = [
     {
-        clave: "principal",
-        nombre: "Recepción y reservas",
-        icono: "bi-calendar-check",
+        clave: "finanzas",
+        nombre: "Finanzas y caja",
+        icono: "bi-cash-coin",
         opciones: [
-            { clave: "checkinout", nombre: "Check-in / Check-out", icono: "bi-door-open" },
-            { clave: "reservas", nombre: "Reservas", icono: "bi-calendar-check" },
-            { clave: "consumos", nombre: "Registro de consumo", icono: "bi-bag-plus" },
-            { clave: "reservas_lista", nombre: "Historial de reservas", icono: "bi-list-ul" },
-            { clave: "huespedes", nombre: "Huéspedes", icono: "bi-people" },
+            { clave: "pagos", nombre: "Pagos y caja", icono: "bi-cash-coin" },
+            { clave: "apertura_caja", nombre: "Aperturas de caja", icono: "bi-box-arrow-in-right" },
+            { clave: "movimiento_caja", nombre: "Movimientos de caja", icono: "bi-arrow-left-right" },
+            { clave: "caja", nombre: "Cajas", icono: "bi-cash-stack" },
+            { clave: "concepto_caja", nombre: "Conceptos de caja", icono: "bi-tags" },
+            { clave: "tipo_movimiento_caja", nombre: "Tipos de movimiento", icono: "bi-arrow-left-right" },
         ],
     },
     {
@@ -76,16 +77,15 @@ const MENU_CATEGORIAS = [
         ],
     },
     {
-        clave: "finanzas",
-        nombre: "Finanzas y caja",
-        icono: "bi-cash-coin",
+        clave: "principal",
+        nombre: "Recepción y reservas",
+        icono: "bi-calendar-check",
         opciones: [
-            { clave: "pagos", nombre: "Pagos y caja", icono: "bi-cash-coin" },
-            { clave: "apertura_caja", nombre: "Aperturas de caja", icono: "bi-box-arrow-in-right" },
-            { clave: "movimiento_caja", nombre: "Movimientos de caja", icono: "bi-arrow-left-right" },
-            { clave: "caja", nombre: "Cajas", icono: "bi-cash-stack" },
-            { clave: "concepto_caja", nombre: "Conceptos de caja", icono: "bi-tags" },
-            { clave: "tipo_movimiento_caja", nombre: "Tipos de movimiento", icono: "bi-arrow-left-right" },
+            { clave: "checkinout", nombre: "Check-in / Check-out", icono: "bi-door-open" },
+            { clave: "reservas", nombre: "Reservas", icono: "bi-calendar-check" },
+            { clave: "consumos", nombre: "Registro de consumo", icono: "bi-bag-plus" },
+            { clave: "reservas_lista", nombre: "Historial de reservas", icono: "bi-list-ul" },
+            { clave: "huespedes", nombre: "Huéspedes", icono: "bi-people" },
         ],
     },
     {

@@ -134,6 +134,25 @@ test('el sidebar organiza los módulos y tablas en categorías del hotel', async
   window.history.pushState({}, '', '/dashboard');
   render(<App />);
 
+  await screen.findByRole('button', { name: 'Dashboard' });
+
+  const ordenEsperado = [
+    'Dashboard',
+    'Finanzas y caja',
+    'Habitaciones y servicios',
+    'Recepción y reservas',
+    'Ventas y comprobantes',
+    'Reportes y auditoría',
+    'Personal y organización',
+    'Administración del sistema',
+  ];
+  const categoriasVisibles = new Set(ordenEsperado);
+  const ordenActual = screen
+    .getAllByRole('button')
+    .map((boton) => boton.textContent.trim())
+    .filter((nombre) => categoriasVisibles.has(nombre));
+  expect(ordenActual).toEqual(ordenEsperado);
+
   expect(await screen.findByRole('button', { name: /habitaciones y servicios/i })).toBeInTheDocument();
   expect(await screen.findByRole('button', { name: /finanzas y caja/i })).toBeInTheDocument();
   expect(await screen.findByRole('button', { name: /ventas y comprobantes/i })).toBeInTheDocument();
