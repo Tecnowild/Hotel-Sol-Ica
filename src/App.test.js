@@ -129,6 +129,30 @@ test('el menú lateral permite contraer y expandir las categorías', async () =>
   expect(screen.getByRole('button', { name: 'Reservas' })).toBeInTheDocument();
 });
 
+test('la identificación del usuario se despliega desde la cabecera y no aparece en el sidebar', async () => {
+  crearSesion();
+  window.history.pushState({}, '', '/dashboard');
+  render(<App />);
+
+  const identificacion = await screen.findByRole('button', {
+    name: 'Identificación de usuario',
+  });
+  expect(identificacion).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText('ADMINISTRADOR')).not.toBeInTheDocument();
+
+  await userEvent.click(identificacion);
+
+  expect(identificacion).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('region', { name: 'Identificación del usuario' })).toHaveTextContent(
+    'ADMINISTRADOR'
+  );
+  expect(screen.getByRole('region', { name: 'Identificación del usuario' })).toHaveTextContent(
+    'CAJA'
+  );
+  expect(screen.queryByText('Bienvenido,')).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: /controla la operación de tu hotel/i })).toBeInTheDocument();
+});
+
 test('el sidebar organiza los módulos y tablas en categorías del hotel', async () => {
   crearSesion();
   window.history.pushState({}, '', '/dashboard');

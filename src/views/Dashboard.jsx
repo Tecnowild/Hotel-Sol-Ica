@@ -140,6 +140,7 @@ const Dashboard = () => {
     const navigate = useNavigate();
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [perfilAbierto, setPerfilAbierto] = useState(false);
     const [categoriasAbiertas, setCategoriasAbiertas] = useState({
         principal: true,
     });
@@ -428,37 +429,9 @@ const Dashboard = () => {
                 </div>
 
 
-                {/* Usuario / Logout */}
+                {/* Cerrar sesión */}
 
                 <div className="border-t border-white/10 p-4">
-
-                    <div className="mb-3 flex items-center gap-3 rounded-xl bg-white/5 p-3">
-
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-hotel-gold text-slate-900">
-
-                            <i className="bi bi-person-fill"></i>
-
-                        </div>
-
-
-                        <div className="min-w-0">
-
-                            <p className="truncate text-sm font-semibold text-white">
-                                <span>
-                                    {usuario.logeo}
-                                </span>
-                            </p>
-
-                            <p className="text-xs text-slate-400">
-                                {sesion.roles?.length
-                                    ? sesion.roles.join(", ")
-                                    : "Sin rol asignado"}
-                            </p>
-
-                        </div>
-
-                    </div>
-
 
                     <button
                         onClick={cerrarSesion}
@@ -534,7 +507,7 @@ const Dashboard = () => {
                     </div>
 
 
-                    <div className="flex items-center gap-3">
+                    <div className="relative flex items-center gap-3">
 
                         <button
                             className="
@@ -559,32 +532,69 @@ const Dashboard = () => {
                         <div className="hidden h-8 w-px bg-gray-200 sm:block"></div>
 
 
-                        <div className="flex items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => setPerfilAbierto((abierto) => !abierto)}
+                            className="flex items-center gap-3 rounded-xl p-1 text-left transition hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-700"
+                            aria-label="Identificación de usuario"
+                            aria-expanded={perfilAbierto}
+                            aria-controls="identificacion-usuario"
+                        >
+                            <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-800">
+                                <i className="bi bi-person-fill" aria-hidden="true"></i>
+                            </span>
+                            <span className="hidden sm:block">
+                                <span className="block text-sm font-semibold text-slate-800">
+                                    {usuario.logeo}
+                                </span>
+                                <span className="block text-xs text-gray-400">
+                                    Mi cuenta
+                                </span>
+                            </span>
+                        </button>
 
-                            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-100 text-blue-800">
-
-                                <i className="bi bi-person-fill"></i>
-
-                            </div>
-
-
-                            <div className="hidden sm:block">
-
-                                <p className="text-sm font-semibold text-slate-800">
-                                    <span>
-                                        {usuario.logeo}
+                        {perfilAbierto && (
+                            <section
+                                id="identificacion-usuario"
+                                aria-label="Identificación del usuario"
+                                className="absolute right-0 top-full z-30 mt-2 w-72 rounded-2xl border border-slate-200 bg-white p-5 text-sm shadow-xl"
+                            >
+                                <div className="mb-4 flex items-center gap-3">
+                                    <span className="flex h-11 w-11 items-center justify-center rounded-full bg-blue-100 text-blue-800">
+                                        <i className="bi bi-person-fill text-lg" aria-hidden="true"></i>
                                     </span>
-                                </p>
+                                    <div className="min-w-0">
+                                        <p className="truncate font-semibold text-slate-900">
+                                            {usuario.logeo}
+                                        </p>
+                                        <p className="text-xs text-slate-500">Identificación de usuario</p>
+                                    </div>
+                                </div>
 
-                                <p className="text-xs text-gray-400">
-                                   <span>
-                                       Usuario autenticado
-                                   </span>
-                                </p>
-
-                            </div>
-
-                        </div>
+                                <div className="space-y-3 border-t border-slate-100 pt-3">
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                            Roles
+                                        </p>
+                                        <p className="mt-1 text-slate-800">
+                                            {sesion.roles?.length
+                                                ? sesion.roles.join(", ")
+                                                : "Sin rol asignado"}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                                            Módulos habilitados
+                                        </p>
+                                        <p className="mt-1 break-words text-slate-800">
+                                            {sesion.modulos?.length
+                                                ? sesion.modulos.join(", ")
+                                                : "Sin módulos asignados"}
+                                        </p>
+                                    </div>
+                                </div>
+                            </section>
+                        )}
 
                     </div>
 
@@ -656,35 +666,26 @@ const Dashboard = () => {
 
                             <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-4 py-2 text-xs font-medium text-blue-100">
 
-                                <i className="bi bi-sun-fill text-hotel-gold"></i>
+                                <i className="bi bi-speedometer2 text-hotel-gold"></i>
 
                               <span>
-                                  Panel principal
+                                  Resumen operativo
                               </span>
                             </div>
 
 
                             <h2 className="font-['Playfair_Display'] text-3xl font-bold leading-tight text-white sm:text-4xl lg:text-5xl">
-
-                              <span>
-                                  Bienvenido,
-                              </span>
+                                Controla la operación
                                 <span className="block text-hotel-gold">
-                                    {usuario.logeo}
+                                    de tu hotel
                                 </span>
-
                             </h2>
 
 
                             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300 sm:text-base">
 
                               <span>
-                                  Administra las operaciones de
-                                  Hotel Sol Ica desde una única
-                                  plataforma. Consulta reservas,
-                                  huéspedes, habitaciones, empleados, 
-                                  servicios, y en general los
-                                  principales servicios del hotel.
+                                  Revisa los indicadores del hotel y accede rápidamente a reservas y habitaciones desde este panel.
                               </span>
                             </p>
 
