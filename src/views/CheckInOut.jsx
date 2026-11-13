@@ -9,6 +9,7 @@ import {
     listarHabitaciones,
     listarConsumosRecepcion,
     listarRecepciones,
+    marcarHabitacionLimpia,
     registrarCheckIn,
     registrarIngresoReserva,
     registrarCheckOut,
@@ -181,14 +182,18 @@ const CheckInOut = () => {
         e.preventDefault();
         setError("");
 
-        if (!form.id_cliente || !form.id_habitacion || !form.id_metodopago || !form.id_usuario) {
-            avisar("Completa cliente, habitación, usuario y método de pago.", false);
+        if (!form.id_cliente || !form.id_habitacion || !form.id_usuario) {
+            avisar("Completa cliente, habitación y usuario.", false);
             return;
         }
         const adelanto = Number(form.adelanto) || 0;
         const total = Number(form.d_inicial || totalEstimado);
         if (adelanto < 0 || adelanto > total) {
             avisar("El adelanto debe ser válido y no puede superar el total de la estadía.", false);
+            return;
+        }
+        if (adelanto > 0 && !form.id_metodopago) {
+            avisar("Selecciona el método de pago del adelanto.", false);
             return;
         }
         if (adelanto > 0 && (!form.id_aperturacaja || !form.id_concepto)) {
@@ -238,7 +243,7 @@ const CheckInOut = () => {
             consultaConsumosActual.current += 1;
             setRecepcionCheckout(null);
             setConsumosCheckout([]);
-            avisar("Check-out registrado. La habitación quedó disponible.");
+            avisar("Check-out registrado. La habitación quedó en limpieza.");
         } catch (errorCheckOut) {
             if (errorCheckOut.procesoParcial) {
                 await cargar();
@@ -289,6 +294,19 @@ const CheckInOut = () => {
         documento.save(nombreArchivo);
     };
 
+    const marcarLimpia = async (habitacion) => {
+        setGuardando(true);
+        try {
+            await marcarHabitacionLimpia(habitacion.id_habitacion);
+            await cargar();
+            avisar(`Habitación ${habitacion.numero} marcada como limpia.`);
+        } catch (errorLimpieza) {
+            avisar(errorLimpieza.message, false);
+        } finally {
+            setGuardando(false);
+        }
+    };
+
     const hacerCheckIn = async (recepcion) => {
         setGuardando(true);
         try {
@@ -307,6 +325,9 @@ const CheckInOut = () => {
         return texto.includes(busqueda.toLowerCase());
     });
 
+    const habitacionesLimpieza = habitaciones.filter((habitacion) =>
+        String(habitacion.estado_nombre || "").toUpperCase().includes("LIMPIEZA")
+    );
     const ordenadas = filtradas.filter((r) => !r.f_salidac);
     const paginacion = usePaginacion(ordenadas.length);
     const recepcionesPagina = ordenadas.slice(paginacion.desde, paginacion.hasta);
@@ -368,6 +389,42 @@ const CheckInOut = () => {
                     <i className="bi bi-exclamation-triangle mr-2"></i>
                     {error}
                 </div>
+            )}
+
+            {habitacionesLimpieza.length > 0 && (
+                <section
+                    className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5"
+                    aria-label="Habitaciones en limpieza"
+                >
+                    <h3 className="font-semibold text-amber-900">Habitaciones en limpieza</h3>
+                    <p className="mt-1 text-sm text-amber-800">
+                        Márcalas como limpias cuando estén listas para volver a vender.
+                    </p>
+                    <ul className="mt-4 flex flex-wrap gap-3">
+                        {habitacionesLimpieza.map((habitacion) => (
+                            <li
+                                key={habitacion.id_habitacion}
+                                className="flex items-center gap-3 rounded-xl border border-amber-200 bg-white px-4 py-3 text-sm shadow-sm"
+                            >
+                                <span className="font-semibold text-slate-800">
+                                    Hab. {habitacion.numero}
+                                </span>
+                                <span className="text-xs text-slate-500">
+                                    {habitacion.categoria_nombre}
+                                </span>
+                                <button
+                                    type="button"
+                                    onClick={() => marcarLimpia(habitacion)}
+                                    disabled={guardando}
+                                    className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <i className="bi bi-check2-circle mr-1"></i>
+                                    Marcar como limpia
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                </section>
             )}
 
             {formAbierto && (
@@ -456,13 +513,16 @@ const CheckInOut = () => {
                         </label>
 
                         <label className="block text-xs font-semibold text-slate-700">
-                            Método de pago *
+                            Método de pago previsto (opcional)
                             <select name="id_metodopago" value={form.id_metodopago} onChange={cambiar} className={`${inputClase} mt-1.5 font-normal`}>
-                                <option value="">-- Seleccione --</option>
+                                <option value="">Pago al check-out (postergado)</option>
                                 {catalogos.metodos.map((m) => (
                                     <option key={m.id_metodopago} value={m.id_metodopago}>{m.n_metodopago}</option>
                                 ))}
                             </select>
+                            <span className="mt-1 block font-normal text-gray-400">
+                                Déjalo vacío para registrar el check-in con pago postergado al check-out.
+                            </span>
                         </label>
 
                         <label className="block text-xs font-semibold text-slate-700">
@@ -683,7 +743,7 @@ const CheckInOut = () => {
                     </div>
                     <p className="mt-3 text-xs text-slate-500">
                         La pre-cuenta es informativa y no reemplaza una factura, boleta ni el registro del pago. Si queda saldo pendiente,
-                        se solicitará confirmación antes de liberar la habitación.
+                        se solicitará confirmación antes de enviar la habitación a limpieza.
                     </p>
                 </section>
             )}

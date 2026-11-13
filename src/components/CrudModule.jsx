@@ -537,6 +537,13 @@ const CrudModule = ({ entidadKey }) => {
     const claseBotonPag =
         "rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-white";
 
+    const tipoIdentidadSeleccionado = (refs.tipo_identidad || []).find(
+        (fila) => String(fila.id_tipoidentidad) === String(valores.id_tipoidentidad)
+    );
+    const consultaDocumentoDisponible =
+        entidadKey !== "huespedes"
+        || String(tipoIdentidadSeleccionado?.abreviatura || "").toUpperCase() === "DNI";
+
     return (
         <div>
 
@@ -576,7 +583,7 @@ const CrudModule = ({ entidadKey }) => {
                         {editandoId ? `Editar ${entidad.titulo.toLowerCase()}` : `Nuevo registro de ${entidad.titulo.toLowerCase()}`}
                     </h3>
 
-                    {entidad.consultaDocumento && (
+                    {entidad.consultaDocumento && consultaDocumentoDisponible && (
                         <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 p-4">
                             <p className="mb-3 text-sm text-blue-900">
                                 Consulta los datos y verifica el resultado antes de guardar. La consulta no crea el registro.

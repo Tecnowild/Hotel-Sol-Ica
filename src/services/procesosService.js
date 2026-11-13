@@ -33,15 +33,18 @@ const auditar = (fila, esNuevo = true) => ({
 
 const lanzar = (error) => {
     if (!error) return;
+    let mensaje = error.message;
     if (error.code === "23503")
-        throw new Error("El registro está relacionado con otros datos y no se puede completar la operación.");
-    if (error.code === "23505")
-        throw new Error("Ya existe un registro con ese valor único. Verifica el número o documento.");
-    if (error.code === "23502")
-        throw new Error(`Falta un dato obligatorio en la base de datos. ${error.message}`);
-    if (error.code === "42501")
-        throw new Error("Sin permisos (RLS). Revisa las políticas de la tabla en Supabase.");
-    throw new Error(error.message);
+        mensaje = "El registro está relacionado con otros datos y no se puede completar la operación.";
+    else if (error.code === "23505")
+        mensaje = "Ya existe un registro con ese valor único. Verifica el número o documento.";
+    else if (error.code === "23502")
+        mensaje = `Falta un dato obligatorio en la base de datos. ${error.message}`;
+    else if (error.code === "42501")
+        mensaje = "Sin permisos (RLS). Revisa las políticas de la tabla en Supabase.";
+    const resultado = new Error(mensaje);
+    resultado.code = error.code;
+    throw resultado;
 };
 
 const leer = async (consulta) => {
@@ -88,6 +91,29 @@ const actualizarFila = async (tabla, pk, id, fila) => {
 
 const darBajaFila = async (tabla, pk, id) =>
     actualizarFila(tabla, pk, id, { estado: "0" });
+
+// El check-in con pago postergado no exige método de pago. Si la base de
+// datos todavía declara la columna como obligatoria, se usa el primer método
+// activo solo para completar el registro; no se crea ningún movimiento de caja.
+const insertarRecepcion = async (fila) => {
+    try {
+        return await insertarFila("recepcion", fila);
+    } catch (error) {
+        if (error.code !== "23502" || fila.id_metodopago != null) throw error;
+        const respaldo = await leer(supabase
+            .from("metodo_pago")
+            .select("id_metodopago")
+            .eq("estado", "1")
+            .order("id_metodopago")
+            .limit(1)
+            .maybeSingle());
+        if (!respaldo) throw error;
+        return insertarFila("recepcion", {
+            ...fila,
+            id_metodopago: respaldo.id_metodopago,
+        });
+    }
+};
 
 const nombrePersona = (p) =>
     p ? `${p.nombre || ""} ${p.ap_paterno || ""} ${p.ap_materno || ""}`.replace(/\s+/g, " ").trim() : "";
@@ -755,11 +781,17 @@ export const registrarCheckIn = async ({
     const clienteId = Number(id_cliente);
     const habitacionId = Number(id_habitacion);
     const usuarioId = Number(id_usuario || usuarioActualId());
-    const metodoId = Number(id_metodopago);
+    const metodoId = id_metodopago ? Number(id_metodopago) : null;
     const total = Number(d_inicial);
     const pagado = Number(adelanto || 0);
-    if (![clienteId, habitacionId, usuarioId, metodoId].every((id) => Number.isInteger(id) && id > 0)) {
-        throw new Error("Selecciona un huésped, habitación, usuario y método de pago válidos.");
+    if (![clienteId, habitacionId, usuarioId].every((id) => Number.isInteger(id) && id > 0)) {
+        throw new Error("Selecciona un huésped, habitación y usuario válidos.");
+    }
+    if (metodoId !== null && (!Number.isInteger(metodoId) || metodoId <= 0)) {
+        throw new Error("El método de pago seleccionado no es válido.");
+    }
+    if (pagado > 0 && metodoId === null) {
+        throw new Error("Selecciona el método de pago del adelanto.");
     }
     if (!Number.isFinite(total) || total < 0 || !Number.isFinite(pagado) || pagado < 0 || pagado > total) {
         throw new Error("El total y el adelanto deben ser importes válidos; el adelanto no puede superar el total.");
@@ -780,13 +812,15 @@ export const registrarCheckIn = async ({
         listarRecepciones(),
         leer(supabase.from("estado_habitacion").select("*").eq("estado", "1")),
         leer(supabase.from("usuario").select("id_usuario").eq("id_usuario", usuarioId).eq("estado", "1").maybeSingle()),
-        leer(supabase.from("metodo_pago").select("id_metodopago").eq("id_metodopago", metodoId).eq("estado", "1").maybeSingle()),
+        metodoId
+            ? leer(supabase.from("metodo_pago").select("id_metodopago").eq("id_metodopago", metodoId).eq("estado", "1").maybeSingle())
+            : Promise.resolve(null),
     ]);
     if (!clientes.some((cliente) => String(cliente.id_cliente) === String(clienteId))) {
         throw new Error("El huésped seleccionado no existe o está inactivo.");
     }
     if (!usuario) throw new Error("El usuario que registra el check-in no existe o está inactivo.");
-    if (!metodo) throw new Error("El método de pago no existe o está inactivo.");
+    if (metodoId !== null && !metodo) throw new Error("El método de pago no existe o está inactivo.");
     const disponible = buscarHabitacionesDisponibles(habitaciones, recepciones, f_entrada, f_salida)
         .some((habitacion) => String(habitacion.id_habitacion) === String(habitacionId));
     if (!disponible) {
@@ -825,7 +859,7 @@ export const registrarCheckIn = async ({
         }
     }
 
-    const recepcion = await insertarFila("recepcion", {
+    const recepcion = await insertarRecepcion({
         id_cliente: clienteId,
         id_habitacion: habitacionId,
         id_usuario: usuarioId,
@@ -963,22 +997,22 @@ export const registrarCheckOut = async (id_recepcion) => {
     }
 
     const estados = await leer(supabase.from("estado_habitacion").select("*").eq("estado", "1"));
-    const disponible = estados.find((e) => String(e.descripcion).toUpperCase().includes("DISPON"));
-    if (!disponible) throw new Error("No hay un estado de habitación «Disponible» configurado.");
+    const limpieza = estados.find((e) => String(e.descripcion).toUpperCase().includes("LIMPIEZA"));
+    if (!limpieza) throw new Error("No hay un estado de habitación «Limpieza» configurado.");
 
     const actualizada = await actualizarFila("recepcion", "id_recepcion", id_recepcion, {
         f_salidac: ahora(),
     });
     try {
         await actualizarFila("habitacion", "id_habitacion", recepcion.id_habitacion, {
-            id_estadohabitacion: disponible.id_estadohabitacion,
+            id_estadohabitacion: limpieza.id_estadohabitacion,
         });
     } catch (errorHabitacion) {
         try {
             await actualizarFila("recepcion", "id_recepcion", id_recepcion, { f_salidac: null });
         } catch (errorReversion) {
             const errorParcial = new Error(
-                `El check-out se registró, pero no se pudo liberar la habitación ni revertir el check-out. No repitas la operación; solicita revisión desde el sistema. Error: ${errorHabitacion.message}; reversión: ${errorReversion.message}`
+                `El check-out se registró, pero no se pudo enviar la habitación a limpieza ni revertir el check-out. No repitas la operación; solicita revisión desde el sistema. Error: ${errorHabitacion.message}; reversión: ${errorReversion.message}`
             );
             errorParcial.procesoParcial = true;
             throw errorParcial;
@@ -987,6 +1021,46 @@ export const registrarCheckOut = async (id_recepcion) => {
     }
 
     return actualizada;
+};
+
+export const marcarHabitacionLimpia = async (id_habitacion) => {
+    const habitacionId = Number(id_habitacion);
+    if (!Number.isInteger(habitacionId) || habitacionId <= 0) {
+        throw new Error("Selecciona una habitación válida.");
+    }
+
+    const [habitaciones, estados] = await Promise.all([
+        listarHabitaciones(),
+        leer(supabase.from("estado_habitacion").select("*").eq("estado", "1")),
+    ]);
+    const habitacion = habitaciones.find(
+        (item) => String(item.id_habitacion) === String(habitacionId)
+    );
+    if (!habitacion) throw new Error("La habitación no existe o está inactiva.");
+    if (!String(habitacion.estado_nombre || "").toUpperCase().includes("LIMPIEZA")) {
+        throw new Error("La habitación no está en limpieza.");
+    }
+
+    const recepcionActiva = await leer(supabase
+        .from("recepcion")
+        .select("id_recepcion")
+        .eq("id_habitacion", habitacionId)
+        .eq("estado", "1")
+        .is("f_salidac", null)
+        .limit(1)
+        .maybeSingle());
+    if (recepcionActiva) {
+        throw new Error("La habitación todavía tiene una estadía activa; registra el check-out antes de marcarla como limpia.");
+    }
+
+    const disponible = estados.find((e) =>
+        String(e.descripcion || "").toUpperCase().includes("DISPON")
+    );
+    if (!disponible) throw new Error("No hay un estado de habitación «Disponible» configurado.");
+
+    return actualizarFila("habitacion", "id_habitacion", habitacionId, {
+        id_estadohabitacion: disponible.id_estadohabitacion,
+    });
 };
 
 // ------------------------------------------------------------

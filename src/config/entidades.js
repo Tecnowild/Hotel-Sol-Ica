@@ -28,11 +28,30 @@ export const ENTIDADES = {
     pk: "id_persona",
     buscarEn: ["n_documento", "nombre", "ap_paterno", "ap_materno", "email", "celular"],
     filtros: ["id_tipoidentidad"],
+    validarFormulario: (datos, refs) => {
+      const tipo = (refs.tipo_identidad || []).find(
+        (fila) => String(fila.id_tipoidentidad) === String(datos.id_tipoidentidad)
+      );
+      if (!tipo) return "Selecciona un tipo de documento válido.";
+      const abreviatura = String(tipo.abreviatura || tipo.n_tipoidentidad || "").trim().toUpperCase();
+      const documento = String(datos.n_documento || "").trim();
+      if (!documento) return "Ingresa el número de documento.";
+      if (abreviatura === "DNI") {
+        return /^\d{8}$/.test(documento) ? "" : "El DNI debe tener 8 dígitos.";
+      }
+      if (!/^[A-Za-z0-9-]+$/.test(documento)) {
+        return "El documento solo puede contener letras, números y guiones.";
+      }
+      const longitud = Math.max(12, Number(tipo.longitud) || 0);
+      if (documento.length < 5 || documento.length > longitud) {
+        return `El documento debe tener entre 5 y ${longitud} caracteres.`;
+      }
+      return "";
+    },
     campos: [
       { name: "id_tipoidentidad", label: "Tipo de documento", type: "select", required: true,
         ref: { tabla: "tipo_identidad", pk: "id_tipoidentidad", label: (r) => r.abreviatura } },
-      { name: "n_documento", label: "N° de documento", type: "text", required: true,
-        pattern: /^\d{8,12}$/, msg: "El documento debe tener entre 8 y 12 dígitos." },
+      { name: "n_documento", label: "N° de documento", type: "text", required: true, maxLength: 12 },
       { name: "nombre", label: "Nombres", type: "text", required: true },
       { name: "ap_paterno", label: "Apellido paterno", type: "text", required: true },
       { name: "ap_materno", label: "Apellido materno", type: "text" },
