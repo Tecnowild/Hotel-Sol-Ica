@@ -268,7 +268,10 @@ test("registra el adelanto del nuevo check-in con caja y concepto de ingreso", a
     await userEvent.selectOptions(screen.getByLabelText("Cliente *"), "31");
     await userEvent.selectOptions(screen.getByLabelText("Habitación disponible *"), "7");
     await userEvent.selectOptions(screen.getByLabelText("Atendido por *"), "2");
-    await userEvent.selectOptions(screen.getByLabelText("Método de pago *"), "4");
+    await userEvent.selectOptions(
+        screen.getByLabelText(/Método de pago previsto/),
+        "4"
+    );
     const adelantoInput = screen.getByRole("spinbutton", { name: /Adelanto/ });
     await userEvent.clear(adelantoInput);
     await userEvent.type(adelantoInput, "25");
@@ -325,7 +328,7 @@ test("prepara la pre-cuenta con consumos y confirma el check-out", async () => {
     await userEvent.click(screen.getByRole("button", { name: "Registrar check-out" }));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("S/ 125.00"));
     await waitFor(() => expect(registrarCheckOut).toHaveBeenCalledWith(42));
-    expect(await screen.findByText("Check-out registrado. La habitación quedó disponible.")).toBeInTheDocument();
+    expect(await screen.findByText("Check-out registrado. La habitación quedó en limpieza.")).toBeInTheDocument();
     confirmar.mockRestore();
 });
 

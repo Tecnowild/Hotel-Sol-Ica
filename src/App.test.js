@@ -193,7 +193,13 @@ test('el sidebar organiza los módulos y tablas en categorías del hotel', async
 });
 
 test('el usuario solo ve módulos habilitados por el servidor', async () => {
-  crearSesion(['CAJA']);
+  guardarSesion({
+    usuario: { logeo: 'cajero', id_usuario: 3, id_tipousuario: 1 },
+    roles: ['CAJERO'],
+    modulos: ['CAJA'],
+    token: 'token-de-prueba',
+    expiraEn: Date.now() + 60 * 60 * 1000,
+  });
   window.history.pushState({}, '', '/dashboard');
   render(<App />);
 
@@ -224,6 +230,17 @@ test('los módulos administrativos se reservan al rol ADMINISTRADOR', async () =
   await screen.findByText('Sesión activa');
   expect(screen.queryByRole('button', { name: /administración del sistema/i })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Usuarios' })).not.toBeInTheDocument();
+});
+
+test('el administrador ve el CRUD de usuarios aunque el módulo no esté listado', async () => {
+  crearSesion([]);
+  window.history.pushState({}, '', '/dashboard');
+  render(<App />);
+
+  await userEvent.click(
+    await screen.findByRole('button', { name: /administración del sistema/i })
+  );
+  expect(screen.getByRole('button', { name: 'Usuarios' })).toBeInTheDocument();
 });
 
 test('redirige al login si no existe una sesión con token y vencimiento válidos', async () => {

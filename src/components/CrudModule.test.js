@@ -174,6 +174,7 @@ test("consulta DNI y precarga los datos de persona sin guardar el registro", asy
     await waitFor(() => expect(screen.queryByText("Cargando...")).not.toBeInTheDocument());
 
     await userEvent.click(await screen.findByRole("button", { name: "Nuevo" }));
+    await userEvent.selectOptions(screen.getByLabelText("Tipo de documento *"), "1");
     await userEvent.type(screen.getByLabelText(/N° de documento/), "12345678");
     await userEvent.click(screen.getByRole("button", { name: /consultar dni en factiliza/i }));
 

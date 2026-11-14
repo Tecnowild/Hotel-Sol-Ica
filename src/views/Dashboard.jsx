@@ -143,14 +143,18 @@ const Dashboard = () => {
 
     const sesion = obtenerSesion();
     const usuario = sesion?.usuario || null;
+    const normalizarPermiso = (valor) => String(valor || "").trim().toUpperCase();
     const modulosPermitidos = new Set(
-        (sesion?.modulos || []).map((modulo) => modulo.toUpperCase())
+        (sesion?.modulos || []).map(normalizarPermiso)
     );
     const rolesUsuario = new Set(
-        (sesion?.roles || []).map((rol) => rol.toUpperCase())
+        (sesion?.roles || []).map(normalizarPermiso)
     );
     const puedeAcceder = (clave) => {
         const modulo = MODULO_POR_VISTA[clave];
+        if (clave === "usuarios") {
+            return rolesUsuario.has("ADMINISTRADOR");
+        }
         if (!modulo || !modulosPermitidos.has(modulo)) {
             return false;
         }
@@ -603,7 +607,14 @@ const Dashboard = () => {
                     {vista === "auditoria" && puedeAcceder(vista) && <HistorialTrazabilidad />}
 
                     {vista !== "dashboard" && vista !== "auditoria" && puedeAcceder(vista) && ENTIDADES[vista] && (
-                        <CrudModule key={vista} entidadKey={vista} />
+                        <CrudModule
+                            key={vista}
+                            entidadKey={vista}
+                            onCurrentUserDeleted={() => {
+                                limpiarSesion();
+                                navigate("/login", { replace: true });
+                            }}
+                        />
                     )}
 
                     {vista === "reservas_lista" && puedeAcceder(vista) && (
@@ -803,7 +814,8 @@ const Dashboard = () => {
 
                             ))}
 
-                            {modulosPermitidos.size === 0 && (
+                            {modulosPermitidos.size === 0 &&
+                                !rolesUsuario.has("ADMINISTRADOR") && (
                                 <p className="text-sm text-slate-500">
                                     Tu usuario no tiene módulos habilitados. Solicita acceso al administrador.
                                 </p>

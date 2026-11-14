@@ -20,9 +20,10 @@ import {
     listarUsuariosAdmin,
     obtenerOpcionesUsuariosAdmin,
 } from "../services/adminUsuariosService";
+import { obtenerSesion } from "../services/authSession";
 
 // Módulo CRUD genérico: sirve para cualquier entidad de config/entidades.js
-const CrudModule = ({ entidadKey }) => {
+const CrudModule = ({ entidadKey, onCurrentUserDeleted }) => {
 
     const entidad = ENTIDADES[entidadKey];
     const { tabla, pk, campos } = entidad;
@@ -435,13 +436,17 @@ const CrudModule = ({ entidadKey }) => {
     };
 
     // ---------- Guardar / Actualizar / Eliminar ----------
-    const ejecutar = async (accion, mensajeOk) => {
+    const ejecutar = async (accion, mensajeOk, alCompletar) => {
         setGuardando(true);
         try {
             await accion();
             invalidarCatalogosReportes();
             avisar(mensajeOk);
             cerrarForm();
+            if (alCompletar) {
+                alCompletar();
+                return;
+            }
             const r = await cargarPagina();   // refresco de la página actual
             if (pagina > r.totalPaginas) {
                 setPagina(r.totalPaginas);
@@ -514,11 +519,16 @@ const CrudModule = ({ entidadKey }) => {
 
     const borrar = (fila) => {
         if (window.confirm("¿Seguro que deseas dar de baja este registro?")) {
+            const esUsuarioActual = entidad.adminUsuarios &&
+                String(fila[pk]) === String(obtenerSesion()?.usuario?.id_usuario);
             ejecutar(
                 () => entidad.adminUsuarios
                     ? darDeBajaUsuarioAdmin(fila[pk])
                     : eliminar(tabla, pk, fila[pk]),
-                "Registro dado de baja correctamente."
+                "Registro dado de baja correctamente.",
+                esUsuarioActual
+                    ? onCurrentUserDeleted
+                    : undefined
             );
         }
     };

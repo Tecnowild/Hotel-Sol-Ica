@@ -11,13 +11,9 @@ const requireAdmin = async (req, res, next) => {
 
     try {
         const permisos = await obtenerPermisosUsuario(idUsuario);
-        const tieneModuloUsuarios = permisos.modulos.some(
-            (modulo) => String(modulo).trim().toUpperCase() === "USUARIOS"
-        );
         if (
             permisos.roles.length !== 1 ||
-            permisos.roles[0].trim().toUpperCase() !== "ADMINISTRADOR" ||
-            !tieneModuloUsuarios
+            permisos.roles[0].trim().toUpperCase() !== "ADMINISTRADOR"
         ) {
             return res.status(403).json({
                 success: false,

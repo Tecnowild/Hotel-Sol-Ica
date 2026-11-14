@@ -462,11 +462,6 @@ const actualizarUsuario = async (idEntrada, entrada) => {
 const darDeBajaUsuario = async (idEntrada, idAdministradorActual) => {
     const supabase = obtenerSupabaseAdmin();
     const idUsuario = normalizarId(idEntrada, "usuario");
-    if (idUsuario === Number(idAdministradorActual)) {
-        const error = new Error("No puedes dar de baja tu propia cuenta.");
-        error.status = 409;
-        throw error;
-    }
 
     const asignaciones = await obtenerAsignacionesActivas(supabase, idUsuario);
     const rolAdmin = await supabase

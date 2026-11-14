@@ -86,6 +86,52 @@ You may also see any lint errors in the console.
 Launches the test runner in the interactive watch mode.\
 See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
 
+### `npm run test:e2e`
+
+Ejecuta pruebas de extremo a extremo en Chromium para el inicio/cierre de sesión
+y la visibilidad de módulos por rol. La API de autenticación se simula para no
+depender de credenciales ni modificar datos reales. La primera vez, instala el
+navegador con `npx playwright install chromium`.
+
+Si una prueba falla, Playwright conserva capturas, video y trazas en
+`test-results/`; los errores de consola y de red aparecen como adjuntos. Para
+abrir el reporte HTML, ejecuta `npx playwright show-report`.
+
+### Lighthouse y PageSpeed Insights
+
+El dashboard es una SPA: los módulos se muestran dentro de `/dashboard` y no
+tienen una URL independiente. Para medir el cambio de vista de un módulo,
+inicia sesión en una cuenta de prueba, abre el módulo en Chrome DevTools >
+Lighthouse y usa el modo **Timespan**: inicia la medición antes de abrir el
+módulo y termínala cuando termine de cargar. Este modo mide interacciones, pero
+no produce una puntuación general ni métricas como LCP. El modo **Snapshot**
+sirve para revisar accesibilidad y buenas prácticas del estado visible, no para
+medir rendimiento.
+
+PageSpeed Insights se debe usar con la URL pública desplegada, en móvil y
+escritorio. No puede acceder a los módulos privados detrás del inicio de sesión;
+para ellos se usa Lighthouse con la sesión abierta. Como referencia de Core Web
+Vitals, busca LCP ≤ 2.5 s, INP ≤ 200 ms y CLS ≤ 0.1. Consulta la
+[guía de flujos de Lighthouse](https://github.com/GoogleChrome/lighthouse/blob/main/docs/user-flows.md)
+y [PageSpeed Insights](https://pagespeed.web.dev/).
+
+### Respaldos de Supabase
+
+Respalda la base de datos completa, no solo el usuario administrador, para
+conservar usuarios, hashes de contraseñas, roles, permisos y sus relaciones.
+Supabase ofrece respaldos diarios automáticos en planes Pro, Team y Enterprise;
+la disponibilidad y retención dependen del plan. Revisa **Database > Backups**
+en el Dashboard y prueba la restauración en un proyecto separado antes de
+restaurar producción. Una restauración reemplaza datos y puede causar
+indisponibilidad.
+
+En el plan Free, exporta la base periódicamente con
+[Supabase CLI `db dump`](https://supabase.com/docs/reference/cli/supabase-db-dump)
+y guarda la copia en un destino seguro fuera del repositorio. Los respaldos de
+base de datos no incluyen los archivos de Supabase Storage; respáldalos por
+separado si el sistema los utiliza. No guardes contraseñas, tokens ni copias de
+la base en Git.
+
 ### `npm run build`
 
 Builds the app for production to the `build` folder.\

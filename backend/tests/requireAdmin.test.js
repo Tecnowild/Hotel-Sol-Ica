@@ -27,15 +27,16 @@ const crearRespuesta = () => ({
     }
 });
 
-test("allows only a current administrator with the users module", async () => {
+test("allows a current administrator even when the users module is not listed", async () => {
     const req = { sesion: { usuario: { id_usuario: 1 }, roles: ["ADMINISTRADOR"] } };
     const res = crearRespuesta();
     let continuo = false;
+    permisosActuales = { roles: ["ADMINISTRADOR"], modulos: [] };
 
     await requireAdmin(req, res, () => { continuo = true; });
 
     assert.equal(continuo, true);
-    assert.deepEqual(req.sesion.modulos, ["USUARIOS"]);
+    assert.deepEqual(req.sesion.modulos, []);
 });
 
 test("rejects staff roles and users with multiple active roles", async () => {
