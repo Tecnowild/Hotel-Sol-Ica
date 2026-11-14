@@ -1,6 +1,15 @@
 const supabase = require("../config/supabase");
 const { obtenerSupabaseAdmin } = require("../config/supabaseAdmin");
 
+let avisoTablaCredencialEmitido = false;
+
+const esTablaCredencialNoDisponible = (error) =>
+    error?.code === "42P01" ||
+    (
+        error?.code === "PGRST205" &&
+        String(error.message || "").includes("usuario_credencial")
+    );
+
 const buscarUsuarioPorLogeo = async (logeo) => {
     let supabasePrivado;
     try {
@@ -35,8 +44,14 @@ const buscarUsuarioPorLogeo = async (logeo) => {
         .select("clave_hash")
         .eq("id_usuario", usuario.id_usuario)
         .maybeSingle();
-    if (errorCredencial && errorCredencial.code !== "42P01") {
+    if (errorCredencial && !esTablaCredencialNoDisponible(errorCredencial)) {
         throw errorCredencial;
+    }
+    if (errorCredencial && !avisoTablaCredencialEmitido) {
+        console.warn(
+            "La tabla usuario_credencial todavía no está disponible en Supabase. Se usará la contraseña heredada; aplica la migración para habilitar el almacenamiento seguro de hashes."
+        );
+        avisoTablaCredencialEmitido = true;
     }
 
     return {
