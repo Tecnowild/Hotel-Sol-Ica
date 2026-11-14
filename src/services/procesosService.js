@@ -1,8 +1,7 @@
 import { supabase } from "../config/supabase";
-import { calcularTotalesEfectivo, calcularTotalesPorMetodo, TURNOS_CAJA } from "../utils/caja";
+import { calcularTotalesPorMetodo, TURNOS_CAJA } from "../utils/caja";
 import { calcularSaldoPendiente } from "../utils/comprobantePago";
 import { buscarHabitacionesDisponibles } from "../utils/disponibilidad";
-import { siguienteNumeroOperacion } from "../utils/operacionesCaja";
 import { invalidarCatalogosReportes } from "./reportesService";
 
 // ============================================================
@@ -119,6 +118,9 @@ const nombrePersona = (p) =>
     p ? `${p.nombre || ""} ${p.ap_paterno || ""} ${p.ap_materno || ""}`.replace(/\s+/g, " ").trim() : "";
 
 const saldoSiguienteApertura = (apertura) => {
+    if (apertura?.fondo_siguiente != null && Number.isFinite(Number(apertura.fondo_siguiente))) {
+        return Number(apertura.fondo_siguiente);
+    }
     const coincidencia = String(apertura?.observacion || "").match(
         /Fondo para siguiente turno:\s*S\/\s*(-?\d+(?:\.\d+)?)/i
     );
@@ -1125,7 +1127,6 @@ export const abrirCaja = async ({
     id_usuario,
     monto_inicial,
     observacion,
-    saldo_anterior,
     turno,
 }) => {
     const cajaId = Number(id_caja);
@@ -1133,56 +1134,24 @@ export const abrirCaja = async ({
     const montoIngresado = Number(monto_inicial);
     if (!Number.isInteger(cajaId) || cajaId <= 0) throw new Error("Selecciona una caja válida.");
     if (!Number.isInteger(usuarioId) || usuarioId <= 0) throw new Error("No se pudo identificar al usuario que abre la caja.");
-    if (!Number.isFinite(montoIngresado) || montoIngresado < 0) throw new Error("El monto inicial debe ser un importe válido y no negativo.");
+    if (monto_inicial == null || String(monto_inicial).trim() === "" || !Number.isFinite(montoIngresado) || montoIngresado < 0) {
+        throw new Error("El monto inicial debe ser un importe válido y no negativo.");
+    }
     const turnoOperativo = TURNOS_CAJA.find((opcion) => opcion === turno);
     if (!turnoOperativo) throw new Error("Selecciona un turno operativo válido.");
     const monto = Math.round(montoIngresado * 100) / 100;
-
-    const [caja, aperturasAbiertas, todas, anterior] = await Promise.all([
-        leer(supabase.from("caja").select("*").eq("id_caja", cajaId).eq("estado", "1").maybeSingle()),
-        leer(supabase.from("apertura_caja").select("id_aperturacaja").eq("id_caja", cajaId).eq("situacion", "A").eq("estado", "1")),
-        leerTodos(() => supabase.from("apertura_caja").select("numero_turno")),
-        obtenerUltimaAperturaCaja(cajaId),
-    ]);
-    if (!caja) throw new Error("La caja seleccionada no existe o está inactiva.");
-    if (aperturasAbiertas.length) throw new Error("Esta caja ya tiene un turno abierto.");
-
-    const maximo = todas.reduce((max, a) => {
-        const valor = Number(String(a.numero_turno || "").replace(/\D/g, ""));
-        return Number.isFinite(valor) && valor > max ? valor : max;
-    }, 0);
-    const numero = `T${String(maximo + 1).padStart(4, "0")}`;
-
-    const saldoAnterior = anterior ? saldoSiguienteApertura(anterior) : Number(saldo_anterior);
-    const diferenciaInicial = Number.isFinite(saldoAnterior) && (anterior || saldo_anterior != null)
-        ? Math.round((monto - saldoAnterior) * 100) / 100
-        : null;
-    const notaApertura = [
-        `Turno operativo: ${turnoOperativo}.`,
-        observacion?.trim(),
-        diferenciaInicial !== null
-            ? `Fondo anterior reportado: S/ ${saldoAnterior.toFixed(2)}. Diferencia de apertura: S/ ${diferenciaInicial.toFixed(2)}.`
-            : null,
-    ].filter(Boolean).join(" ");
-
-    const apertura = await insertarFila("apertura_caja", {
-        id_caja: cajaId,
-        id_usuario: usuarioId,
-        numero_turno: numero,
-        f_apertura: ahora(),
-        f_cierre: null,
-        monto_inicial: monto,
-        total_ingresos: 0,
-        total_egresos: 0,
-        monto_sistema: monto,
-        monto_declarado: 0,
-        diferencia: 0,
-        situacion: "A",
-        observacion: notaApertura || "Apertura de caja desde el módulo de pagos",
+    const { data, error } = await supabase.rpc("abrir_turno_caja", {
+        p_id_caja: cajaId,
+        p_id_usuario: usuarioId,
+        p_monto_inicial: monto,
+        p_turno: turnoOperativo,
+        p_observacion: String(observacion || "").trim() || null,
     });
-
-    await actualizarFila("caja", "id_caja", cajaId, { aperturada: "1" });
-    return { ...apertura, turno_nombre: turnoOperativo };
+    lanzar(error);
+    if (!data?.id_aperturacaja) {
+        throw new Error("La base de datos no devolvió el turno de caja creado.");
+    }
+    return { ...data, turno_nombre: data.turno_nombre || turnoOperativo };
 };
 
 export const cerrarCaja = async (id_aperturacaja, {
@@ -1211,90 +1180,46 @@ export const cerrarCaja = async (id_aperturacaja, {
         throw new Error("No se pudo identificar al usuario que cierra la caja.");
     }
 
-    const { data: apertura, error } = await supabase
-        .from("apertura_caja")
-        .select("*")
-        .eq("id_aperturacaja", aperturaId)
-        .maybeSingle();
-    lanzar(error);
-    if (!apertura) throw new Error("La apertura de caja no existe.");
-    if (String(apertura.situacion).toUpperCase() === "C") throw new Error("Esta caja ya está cerrada.");
-
-    const [movimientos, tipos, metodos, conceptos] = await Promise.all([
-        leer(supabase.from("movimiento_caja").select("*").eq("estado", "1").eq("id_aperturacaja", aperturaId)),
-        leer(supabase.from("tipo_movimiento_caja").select("id_tipomovimiento, signo")),
-        leer(supabase.from("metodo_pago").select("id_metodopago, n_metodopago").eq("estado", "1")),
-        leer(supabase.from("concepto_caja").select("id_concepto, n_concepto, descripcion")),
-    ]);
-    const { ingresos, egresos, sistema } = calcularTotalesEfectivo(
-        apertura.monto_inicial,
-        movimientos,
-        tipos
-    );
-    const resumenMetodos = calcularTotalesPorMetodo(apertura.monto_inicial, movimientos, tipos, metodos, conceptos);
-    const resumenPorId = new Map(resumenMetodos.map((item) => [String(item.clave), item]));
-    if (conteo_metodos.length && conteo_metodos.length !== resumenMetodos.length) {
+    if (!Array.isArray(conteo_metodos) || conteo_metodos.length === 0) {
         throw new Error("El arqueo debe incluir todos los métodos de pago disponibles.");
     }
-    const clavesConteo = conteo_metodos.map((item) =>
-        String(item.clave || item.id_metodopago || "efectivo")
-    );
-    if (new Set(clavesConteo).size !== clavesConteo.length) {
-        throw new Error("Cada método de pago debe aparecer una sola vez en el arqueo.");
-    }
     const conteo = conteo_metodos.map((item) => {
+        if (item.contado == null || String(item.contado).trim() === "") {
+            throw new Error("Todos los montos contados deben ser válidos y no negativos.");
+        }
         const contado = Number(item.contado);
+        const esperado = Number(item.esperado);
         if (!Number.isFinite(contado) || contado < 0) {
             throw new Error("Todos los montos contados deben ser válidos y no negativos.");
         }
-        const metodoId = String(item.clave || item.id_metodopago || "efectivo");
-        const resumen = resumenPorId.get(metodoId);
-        if (!resumen) throw new Error("El método de pago del arqueo no es válido.");
+        if (!Number.isFinite(esperado)) {
+            throw new Error("El arqueo contiene un monto esperado inválido. Actualiza el arqueo.");
+        }
         return {
-            metodo: resumen?.nombre || String(item.metodo || "Método no identificado"),
-            esperado: resumen?.esperado || 0,
+            clave: String(item.clave || item.id_metodopago || "efectivo"),
+            id_metodopago: item.id_metodopago ?? null,
+            metodo: String(item.metodo || ""),
+            esperado: Math.round(esperado * 100) / 100,
             contado: Math.round(contado * 100) / 100,
         };
     });
-    const efectivoContado = conteo.find((item) => /efectivo/i.test(item.metodo))
-        || (conteo_metodos.some((item) => !item.id_metodopago) ? conteo.find((item) => item.metodo === "Efectivo") : null);
-    if (efectivoContado && efectivoContado.contado !== declarado) {
-        throw new Error("El efectivo declarado debe coincidir con el efectivo contado en el arqueo.");
+    const clavesConteo = conteo.map((item) => item.clave);
+    if (new Set(clavesConteo).size !== clavesConteo.length) {
+        throw new Error("Cada método de pago debe aparecer una sola vez en el arqueo.");
     }
-    const detalleArqueo = [
-        ...conteo.map((item) =>
-            `${item.metodo}: esperado S/ ${item.esperado.toFixed(2)}, contado S/ ${item.contado.toFixed(2)}`
-        ),
-        `Fondo para siguiente turno: S/ ${fondoSiguiente.toFixed(2)}.`,
-        `Retiro a caja fuerte: S/ ${(declarado - fondoSiguiente).toFixed(2)}.`,
-    ].join(" | ");
-    const observacionCierre = [
-        apertura.observacion ? `Apertura: ${apertura.observacion}` : null,
-        observacion?.trim() ? `Cierre: ${observacion.trim()}` : "Cierre de caja",
-        detalleArqueo,
-    ].filter(Boolean).join(" — ");
-
-    const { data: cerrada, error: errorCierre } = await supabase
-        .from("apertura_caja")
-        .update(auditar({
-            id_usuariocierre: usuarioCierreId,
-            f_cierre: ahora(),
-            total_ingresos: ingresos,
-            total_egresos: egresos,
-            monto_sistema: sistema,
-            monto_declarado: declarado,
-            diferencia: Math.round((declarado - sistema) * 100) / 100,
-            situacion: "C",
-            observacion: observacionCierre || apertura.observacion || "Cierre de caja",
-        }, false))
-        .eq("id_aperturacaja", aperturaId)
-        .eq("situacion", "A")
-        .select()
-        .single();
-    lanzar(errorCierre);
-
-    await actualizarFila("caja", "id_caja", apertura.id_caja, { aperturada: "0" });
-    return { ...cerrada, arqueo: conteo, fondo_siguiente: fondoSiguiente };
+    const { data, error } = await supabase.rpc("cerrar_turno_caja", {
+        p_id_aperturacaja: aperturaId,
+        p_id_usuario: Number(usuarioCierreId),
+        p_monto_declarado: declarado,
+        p_conteo_metodos: conteo,
+        p_fondo_siguiente: fondoSiguiente,
+        p_observacion: String(observacion || "").trim() || null,
+    });
+    lanzar(error);
+    if (!data?.id_aperturacaja || !Array.isArray(data.arqueo)) {
+        throw new Error("La base de datos no devolvió el resultado completo del cierre.");
+    }
+    return data;
 };
 
 export const registrarPago = async ({
@@ -1323,174 +1248,26 @@ export const registrarPago = async ({
         throw new Error("La recepción seleccionada no es válida.");
     }
 
-    const [concepto, tipo, apertura] = await Promise.all([
-        leer(supabase.from("concepto_caja").select("*").eq("id_concepto", conceptoId).single()),
-        leer(supabase.from("tipo_movimiento_caja").select("*").eq("id_tipomovimiento", tipoId).single()),
-        leer(supabase.from("apertura_caja").select("*").eq("id_aperturacaja", aperturaId).single()),
-    ]);
-
-    if (!apertura || String(apertura.situacion).toUpperCase() !== "A")
-        throw new Error("La caja seleccionada no está abierta.");
-    if (!concepto) throw new Error("El concepto de caja no existe.");
-    if (!tipo) throw new Error("El tipo de movimiento no existe.");
-    if (String(concepto.id_tipomovimiento) !== String(tipoId)) {
-        throw new Error("El tipo de movimiento no corresponde al concepto seleccionado.");
-    }
-    if (!["+", "-"].includes(tipo.signo)) {
-        throw new Error("El tipo de movimiento no tiene un signo válido.");
-    }
-    const afectaEfectivo = String(concepto.afecta_efectivo || "").toUpperCase();
-    if (!["S", "N"].includes(afectaEfectivo)) {
-        throw new Error("El concepto no indica si el movimiento afecta al efectivo.");
-    }
-    let recepcion;
-    if (recepcionId) {
-        recepcion = await leer(supabase.from("recepcion").select("*")
-            .eq("id_recepcion", recepcionId).eq("estado", "1").single());
-        if (!recepcion) throw new Error("La recepción seleccionada no existe o está inactiva.");
-        if (tipo.signo !== "+") {
-            throw new Error("Un egreso no se puede registrar como pago de una recepción.");
-        }
-        const saldoPendiente = calcularSaldoPendiente(recepcion);
-        if (saldoPendiente <= 0) throw new Error("La recepción seleccionada no tiene saldo pendiente.");
-        if (valor > saldoPendiente) {
-            throw new Error(`El pago supera el saldo pendiente de S/ ${saldoPendiente.toFixed(2)}.`);
-        }
-    }
     const usuarioId = usuarioActualId();
     if (!Number.isInteger(Number(usuarioId)) || Number(usuarioId) <= 0) {
         throw new Error("No se pudo identificar al usuario que registra el movimiento.");
     }
-
-    const movimientosExistentes = await leerTodos(() => supabase
-        .from("movimiento_caja")
-        .select("numero_operacion")
-        .order("id_movimientocaja", { ascending: true }));
-    const numeroOperacion = siguienteNumeroOperacion(
-        movimientosExistentes.map((movimiento) => movimiento.numero_operacion)
-    );
-
-    const movimiento = await insertarFila("movimiento_caja", {
-        id_aperturacaja: aperturaId,
-        id_tipomovimiento: tipoId,
-        id_concepto: conceptoId,
-        id_metodopago: metodoId,
-        id_usuario: usuarioId,
-        id_recepcion: recepcionId,
-        id_venta: null,
-        numero_operacion: numeroOperacion,
-        documento: documento || null,
-        descripcion: descripcion || concepto?.n_concepto || "Pago registrado",
-        monto: valor,
-        afecta_efectivo: afectaEfectivo,
-        f_movimiento: ahora(),
-        ip: "127.0.0.1",
-        terminal: "WEB",
+    const { data, error } = await supabase.rpc("registrar_pago_caja", {
+        p_id_aperturacaja: aperturaId,
+        p_id_usuario: Number(usuarioId),
+        p_id_recepcion: recepcionId,
+        p_id_metodopago: metodoId,
+        p_id_concepto: conceptoId,
+        p_id_tipomovimiento: tipoId,
+        p_monto: valor,
+        p_documento: documento || null,
+        p_descripcion: descripcion || null,
     });
-
-    let saldoPendienteDespues = null;
-    let totalPagado = null;
-    let pagoCalculado;
-    let saldoCalculado;
-    if (recepcion) {
-        pagoCalculado = Math.round(((Number(recepcion.t_pagado) || 0) + valor) * 100) / 100;
-        saldoCalculado = Math.max(0, Math.round((calcularSaldoPendiente(recepcion) - valor) * 100) / 100);
+    lanzar(error);
+    if (!data?.id_movimientocaja) {
+        throw new Error("La base de datos no devolvió el movimiento de caja registrado.");
     }
-
-    try {
-        if (afectaEfectivo === "S") {
-            const ingresos = Number(apertura.total_ingresos) || 0;
-            const egresos = Number(apertura.total_egresos) || 0;
-            const nuevosIngresos = Math.round((tipo.signo === "-" ? ingresos : ingresos + valor) * 100) / 100;
-            const nuevosEgresos = Math.round((tipo.signo === "-" ? egresos + valor : egresos) * 100) / 100;
-
-            await actualizarFila("apertura_caja", "id_aperturacaja", aperturaId, {
-                total_ingresos: nuevosIngresos,
-                total_egresos: nuevosEgresos,
-                monto_sistema: Math.round((Number(apertura.monto_inicial) + nuevosIngresos - nuevosEgresos) * 100) / 100,
-            });
-        }
-
-        if (recepcion) {
-            await actualizarFila("recepcion", "id_recepcion", recepcionId, {
-                t_pagado: pagoCalculado,
-                totaldeuda: saldoCalculado,
-            });
-            saldoPendienteDespues = saldoCalculado;
-            totalPagado = pagoCalculado;
-        }
-    } catch (errorOperacion) {
-        const erroresReversion = [];
-        let movimientoAnulado = false;
-        try {
-            await darBajaFila("movimiento_caja", "id_movimientocaja", movimiento.id_movimientocaja);
-            movimientoAnulado = true;
-        } catch (errorMovimiento) {
-            erroresReversion.push(`movimiento: ${errorMovimiento.message}`);
-        }
-
-        if (afectaEfectivo === "S" && movimientoAnulado) {
-            try {
-                const [movimientosActivos, tiposActivos] = await Promise.all([
-                    leer(supabase.from("movimiento_caja").select("*")
-                        .eq("estado", "1").eq("id_aperturacaja", aperturaId)),
-                    leer(supabase.from("tipo_movimiento_caja").select("id_tipomovimiento, signo")),
-                ]);
-                const totales = calcularTotalesEfectivo(apertura.monto_inicial, movimientosActivos, tiposActivos);
-                await actualizarFila("apertura_caja", "id_aperturacaja", aperturaId, {
-                    total_ingresos: totales.ingresos,
-                    total_egresos: totales.egresos,
-                    monto_sistema: totales.sistema,
-                });
-            } catch (errorApertura) {
-                erroresReversion.push(`apertura: ${errorApertura.message}`);
-            }
-        }
-
-        if (recepcion) {
-            try {
-                const actual = await leer(supabase.from("recepcion")
-                    .select("t_pagado, totaldeuda")
-                    .eq("id_recepcion", recepcionId)
-                    .maybeSingle());
-                if (!actual) throw new Error("No se encontró la recepción para verificar su saldo.");
-                const actualPagado = Number(actual.t_pagado ?? 0);
-                const actualSaldo = Number(actual.totaldeuda ?? calcularSaldoPendiente(recepcion));
-                const coincideConEstePago =
-                    actualPagado === pagoCalculado
-                    && actualSaldo === saldoCalculado;
-                const sigueConSaldoAnterior =
-                    actualPagado === (Number(recepcion.t_pagado) || 0)
-                    && actualSaldo === calcularSaldoPendiente(recepcion);
-                if (coincideConEstePago) {
-                    await actualizarFila("recepcion", "id_recepcion", recepcionId, {
-                        t_pagado: recepcion.t_pagado,
-                        totaldeuda: recepcion.totaldeuda,
-                    });
-                } else if (!sigueConSaldoAnterior) {
-                    erroresReversion.push("saldo: hubo otro cambio concurrente y no se sobrescribió");
-                }
-            } catch (errorSaldo) {
-                erroresReversion.push(`saldo: ${errorSaldo.message}`);
-            }
-        }
-
-        if (erroresReversion.length) {
-            const errorParcial = new Error(
-                `No se completó el pago y el sistema no pudo revertir todos sus registros. No repitas el cobro; actualiza el historial y verifica el saldo. Error: ${errorOperacion.message}; reversión: ${erroresReversion.join(" | ")}`
-            );
-            errorParcial.procesoParcial = true;
-            throw errorParcial;
-        }
-        throw errorOperacion;
-    }
-
-    return {
-        ...movimiento,
-        saldo_anterior: recepcion ? calcularSaldoPendiente(recepcion) : null,
-        saldo_pendiente: saldoPendienteDespues,
-        total_pagado: totalPagado,
-    };
+    return data;
 };
 
 export const listarPagos = async () => {

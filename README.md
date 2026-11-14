@@ -71,6 +71,13 @@ active role assignments. Configure `SUPABASE_SERVICE_ROLE_KEY` in the backend
 environment only, then restart the backend. The application does not run this
 migration automatically.
 
+Before using cash opening, closing, and payments, review and manually run
+[`backend/migrations/20261114_caja_transacciones.sql`](./backend/migrations/20261114_caja_transacciones.sql)
+in the Supabase SQL Editor. It stores the next-shift float separately, prevents
+more than one open shift per register, and makes opening, closing, and payment
+updates atomic. The RPC functions run with the caller's database permissions
+and continue to depend on the project's RLS policies.
+
 Factiliza is used to look up DNI and RUC data when creating a person or company,
 and when entering a new person or company in a reservation. Configure
 `FACTILIZA_TOKEN` in `backend/.env` (see `backend/.env.example`); keep this token

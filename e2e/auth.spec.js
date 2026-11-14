@@ -82,6 +82,7 @@ test("admin inicia sesión, consulta su perfil y cierra sesión", async ({
 
     await page.getByRole("button", { name: /cerrar sesión/i }).first().click();
     await expect(page.getByText("Bienvenido")).toBeVisible();
+    expect(browserDiagnostics, browserDiagnostics.join("\n")).toEqual([]);
 });
 
 test("el menú solo muestra módulos habilitados para el rol", async ({
@@ -99,4 +100,5 @@ test("el menú solo muestra módulos habilitados para el rol", async ({
         page.getByRole("button", { name: /administración del sistema/i })
     ).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Usuarios" })).toHaveCount(0);
+    expect(browserDiagnostics, browserDiagnostics.join("\n")).toEqual([]);
 });

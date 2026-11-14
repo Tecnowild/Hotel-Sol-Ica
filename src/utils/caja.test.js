@@ -1,9 +1,21 @@
-import { calcularTotalesEfectivo, calcularTotalesPorMetodo } from "./caja";
+import {
+    calcularNetoDelDia,
+    calcularTotalesEfectivo,
+    calcularTotalesPorMetodo,
+} from "./caja";
 
 const tipos = [
     { id_tipomovimiento: 1, signo: "+" },
     { id_tipomovimiento: 2, signo: "-" },
 ];
+
+test("calcula el neto solo para los movimientos del día y respeta los egresos", () => {
+    expect(calcularNetoDelDia([
+        { f_movimiento: "2026-11-14T09:00:00", monto: "20.25", tipo_signo: "+" },
+        { f_movimiento: "2026-11-14T10:00:00", monto: 5, tipo_signo: "-" },
+        { f_movimiento: "2026-11-13T23:59:00", monto: 100, tipo_signo: "+" },
+    ], new Date(2026, 10, 14, 12))).toBe(15.25);
+});
 
 test("calcula el arqueo solo con movimientos que afectan efectivo", () => {
     const resultado = calcularTotalesEfectivo(100, [

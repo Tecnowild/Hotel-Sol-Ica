@@ -924,7 +924,6 @@ test("la apertura propone el fondo del cierre anterior y registra notas", async 
         monto_inicial: 30,
         observacion: "Billetes revisados",
         turno: "Mañana",
-        saldo_anterior: 30,
     })));
     expect(await screen.findByRole("status")).toHaveTextContent("Caja abierta correctamente");
     expect(screen.getByRole("status")).toHaveTextContent("T0002");
@@ -985,9 +984,42 @@ test("el cierre captura conteos, fondo de siguiente turno y observación", async
         fondo_siguiente: 20,
         observacion: "Un voucher pendiente",
         conteo_metodos: [
-            { id_metodopago: 1, metodo: "Efectivo", contado: "70" },
-            { id_metodopago: 2, metodo: "Tarjeta", contado: "20" },
+            { id_metodopago: 1, clave: "1", metodo: "Efectivo", esperado: 75, contado: "70" },
+            { id_metodopago: 2, clave: "2", metodo: "Tarjeta", esperado: 20, contado: "20" },
         ],
     })));
     expect(await screen.findByText(/Cierre de T0008 registrado/)).toBeInTheDocument();
+});
+
+test("cierra el arqueo de pantalla si una operación incierta confirma que el turno ya no está abierto", async () => {
+    const apertura = {
+        id_aperturacaja: 8,
+        numero_turno: "T0008",
+        caja_nombre: "Recepción",
+        monto_inicial: 50,
+    };
+    listarAperturasAbiertas
+        .mockResolvedValueOnce([apertura])
+        .mockResolvedValueOnce([]);
+    listarCatalogosPago.mockResolvedValue({
+        cajas: [],
+        usuarios: [],
+        metodos: [{ id_metodopago: 1, n_metodopago: "Efectivo" }],
+        conceptos: [],
+        tipos: [],
+    });
+    obtenerArqueoCaja.mockResolvedValue({
+        apertura,
+        metodos: [{ id_metodopago: 1, nombre: "Efectivo", esperado: 50 }],
+    });
+    cerrarCaja.mockRejectedValue(new Error("No se pudo confirmar la respuesta."));
+    render(<Pagos />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Iniciar arqueo y cierre" }));
+    await screen.findByRole("dialog");
+    await userEvent.type(screen.getByLabelText("Contado Efectivo"), "50");
+    await userEvent.click(screen.getByRole("button", { name: "Confirmar cierre" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(await screen.findByText("No se pudo confirmar la respuesta.")).toBeInTheDocument();
 });

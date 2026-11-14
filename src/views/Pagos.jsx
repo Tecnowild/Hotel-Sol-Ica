@@ -14,7 +14,7 @@ import {
     registrarPago,
 } from "../services/procesosService";
 import { fechaHora, soles } from "../utils/format";
-import { TURNOS_CAJA } from "../utils/caja";
+import { calcularNetoDelDia, TURNOS_CAJA } from "../utils/caja";
 import { construirComprobantePago } from "../utils/comprobantePago";
 import { filtrarConceptosCaja, siguienteNumeroOperacion } from "../utils/operacionesCaja";
 import Paginacion from "../components/Paginacion";
@@ -99,12 +99,21 @@ const Pagos = () => {
             setRecepciones(rec);
             setPagos(pag);
 
-            setForm((prev) => ({
-                ...prev,
-                id_aperturacaja: prev.id_aperturacaja || (ap[0] ? String(ap[0].id_aperturacaja) : ""),
-            }));
+            setForm((prev) => {
+                const seleccionSigueAbierta = ap.some(
+                    (apertura) => String(apertura.id_aperturacaja) === String(prev.id_aperturacaja)
+                );
+                return {
+                    ...prev,
+                    id_aperturacaja: seleccionSigueAbierta
+                        ? prev.id_aperturacaja
+                        : (ap[0] ? String(ap[0].id_aperturacaja) : ""),
+                };
+            });
+            return ap;
         } catch (e) {
             setError(e.message);
+            return null;
         } finally {
             setCargando(false);
         }
@@ -273,9 +282,6 @@ const Pagos = () => {
                 monto_inicial: montoInicial,
                 observacion: formApertura.observacion,
                 turno: formApertura.turno,
-                saldo_anterior: aperturaAnterior
-                    ? aperturaAnterior.saldo_siguiente ?? aperturaAnterior.monto_declarado ?? aperturaAnterior.monto_sistema
-                    : null,
             });
             const caja = catalogos.cajas.find((item) => String(item.id_caja) === String(formApertura.id_caja));
             setAperturaConfirmada({
@@ -291,6 +297,7 @@ const Pagos = () => {
             avisar(`Caja ${apertura.numero_turno} aperturada correctamente.`);
         } catch (errorApertura) {
             avisar(errorApertura.message, false);
+            await cargar();
         } finally {
             setGuardando(false);
         }
@@ -324,8 +331,9 @@ const Pagos = () => {
         const declarado = Number(conteoMetodos[idEfectivo]);
         const conteo = arqueo.metodos.map((metodo) => ({
             id_metodopago: metodo.id_metodopago,
-            clave: metodo.clave,
+            clave: String(metodo.clave || metodo.id_metodopago || "efectivo"),
             metodo: metodo.nombre,
+            esperado: metodo.esperado,
             contado: conteoMetodos[String(metodo.clave || metodo.id_metodopago || "efectivo")],
         }));
         if (conteo.some((item) => item.contado === "" || !Number.isFinite(Number(item.contado)) || Number(item.contado) < 0)) {
@@ -359,7 +367,33 @@ const Pagos = () => {
                 ? "Caja cerrada sin diferencia."
                 : `Caja cerrada con diferencia de ${soles(diferencia)}.`);
         } catch (errorCierre) {
-            avisar(errorCierre.message, false);
+            if (errorCierre.message.includes("Los movimientos cambiaron durante el arqueo")) {
+                try {
+                    const resumenActualizado = await obtenerArqueoCaja(turnoCierre.id_aperturacaja);
+                    setArqueo(resumenActualizado);
+                    setConteoMetodos(Object.fromEntries(
+                        resumenActualizado.metodos.map((metodo) => [
+                            String(metodo.clave || metodo.id_metodopago || "efectivo"),
+                            "",
+                        ])
+                    ));
+                    avisar("Se registraron movimientos durante el arqueo. Vuelve a contar cada método de pago.", false);
+                } catch (errorRefresco) {
+                    setTurnoCierre(null);
+                    setArqueo(null);
+                    await cargar();
+                    avisar(`No se pudo actualizar el arqueo: ${errorRefresco.message}`, false);
+                }
+            } else {
+                const aperturasActuales = await cargar();
+                if (aperturasActuales && !aperturasActuales.some(
+                    (apertura) => String(apertura.id_aperturacaja) === String(turnoCierre.id_aperturacaja)
+                )) {
+                    setTurnoCierre(null);
+                    setArqueo(null);
+                }
+                avisar(errorCierre.message, false);
+            }
         } finally {
             setGuardando(false);
         }
@@ -423,7 +457,7 @@ const Pagos = () => {
         documento.save(`cierre-caja-${apertura.numero_turno}.pdf`);
     };
 
-    const totalDia = pagos.reduce((s, p) => s + (p.tipo_signo === "-" ? -Number(p.monto) : Number(p.monto)), 0);
+    const totalDia = calcularNetoDelDia(pagos);
     const saldoAnterior = Number(
         aperturaAnterior?.saldo_siguiente
         ?? aperturaAnterior?.monto_declarado
@@ -951,7 +985,7 @@ const Pagos = () => {
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
                     <h3 className="font-semibold text-slate-900">Últimos movimientos de caja</h3>
                     <span className="text-sm text-slate-500">
-                        Neto: <strong className={totalDia >= 0 ? "text-emerald-700" : "text-red-600"}>{soles(totalDia)}</strong>
+                        Neto del día: <strong className={totalDia >= 0 ? "text-emerald-700" : "text-red-600"}>{soles(totalDia)}</strong>
                     </span>
                 </div>
                 <div className="overflow-x-auto">

@@ -1,5 +1,23 @@
 export const TURNOS_CAJA = ["Mañana", "Tarde", "Noche"];
 
+export const calcularNetoDelDia = (movimientos, fechaReferencia = new Date()) => {
+    const claveDia = (fecha) => [
+        fecha.getFullYear(),
+        String(fecha.getMonth() + 1).padStart(2, "0"),
+        String(fecha.getDate()).padStart(2, "0"),
+    ].join("-");
+    const dia = claveDia(fechaReferencia);
+    const centimos = movimientos.reduce((total, movimiento) => {
+        const fecha = new Date(movimiento.f_movimiento);
+        const monto = Number(movimiento.monto);
+        if (!Number.isFinite(fecha.getTime()) || claveDia(fecha) !== dia || !Number.isFinite(monto)) {
+            return total;
+        }
+        return total + Math.round(monto * 100) * (movimiento.tipo_signo === "-" ? -1 : 1);
+    }, 0);
+    return centimos / 100;
+};
+
 const aCentimos = (monto) => {
     const valor = Number(monto);
     if (!Number.isFinite(valor)) {

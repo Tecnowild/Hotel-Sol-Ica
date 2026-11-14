@@ -451,6 +451,7 @@ export const ENTIDADES = {
       { name: "total_egresos", label: "Total egresos (S/)", type: "number", min: 0 },
       { name: "monto_sistema", label: "Monto sistema (S/)", type: "number", min: 0 },
       { name: "monto_declarado", label: "Monto declarado (S/)", type: "number", min: 0 },
+      { name: "fondo_siguiente", label: "Fondo siguiente (S/)", type: "number", min: 0 },
       { name: "diferencia", label: "Diferencia (S/)", type: "number" },
       { name: "situacion", label: "Situación", type: "select", required: true,
         options: [{ value: "A", label: "Abierta" }, { value: "C", label: "Cerrada" }] },
