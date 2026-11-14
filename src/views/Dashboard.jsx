@@ -15,6 +15,7 @@ import Consumos from "./Consumos";
 import HistorialTrazabilidad from "./HistorialTrazabilidad";
 import { cerrarSesion as limpiarSesion, obtenerSesion } from "../services/authSession";
 import DashboardResumen from "./DashboardResumen";
+import CentroAyuda from "./CentroAyuda";
 
 const MODULO_POR_VISTA = {
     checkinout: "RECEPCION",
@@ -166,7 +167,7 @@ const Dashboard = () => {
     const [vista, setVista] = useState("dashboard");
 
     const abrirVista = (clave) => {
-        if (clave !== "dashboard" && !puedeAcceder(clave)) {
+        if (clave !== "dashboard" && clave !== "ayuda" && !puedeAcceder(clave)) {
             return;
         }
 
@@ -420,6 +421,16 @@ const Dashboard = () => {
                 <div className="border-t border-white/10 p-4">
 
                     <button
+                        type="button"
+                        onClick={() => abrirVista("ayuda")}
+                        className={`${claseItem("ayuda")} mb-2 w-full`}
+                        aria-current={vista === "ayuda" ? "page" : undefined}
+                    >
+                        <i className="bi bi-question-circle" aria-hidden="true"></i>
+                        <span>Ayuda</span>
+                    </button>
+
+                    <button
                         onClick={cerrarSesion}
                         className="
                             flex
@@ -591,6 +602,8 @@ const Dashboard = () => {
                 {/* CONTENIDO */}
 
                 <main className="p-5 sm:p-8">
+
+                    {vista === "ayuda" && <CentroAyuda />}
 
                     {vista === "checkinout" && puedeAcceder(vista) && <CheckInOut />}
 

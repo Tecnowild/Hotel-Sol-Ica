@@ -243,6 +243,25 @@ test('el administrador ve el CRUD de usuarios aunque el módulo no esté listado
   expect(screen.getByRole('button', { name: 'Usuarios' })).toBeInTheDocument();
 });
 
+test('Ayuda está disponible desde el pie del menú para cualquier rol con sesión', async () => {
+  guardarSesion({
+    usuario: { logeo: 'recepcion', id_usuario: 4, id_tipousuario: 1 },
+    roles: ['RECEPCIONISTA'],
+    modulos: ['CLIENTES', 'RECEPCION', 'HABITACIONES'],
+    token: 'token-de-prueba',
+    expiraEn: Date.now() + 60 * 60 * 1000,
+  });
+  window.history.pushState({}, '', '/dashboard');
+  render(<App />);
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Ayuda' }));
+
+  expect(screen.getByRole('heading', { name: 'Centro de ayuda' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Manual de usuario/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Manual del programador/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Contacto y soporte/ })).toBeInTheDocument();
+});
+
 test('redirige al login si no existe una sesión con token y vencimiento válidos', async () => {
   sessionStorage.setItem('usuario', JSON.stringify({
     logeo: 'admin',
