@@ -1,21 +1,22 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import HotelLogo from "../components/HotelLogo";
 
-import CrudModule from "../components/CrudModule";
 import { ENTIDADES } from "../config/entidades";
 
-import CheckInOut from "./CheckInOut";
-import Reservas from "./Reservas";
-import Pagos from "./Pagos";
-import Facturacion from "./Facturacion";
-import Reportes from "./Reportes";
-import Consumos from "./Consumos";
-import HistorialTrazabilidad from "./HistorialTrazabilidad";
 import { cerrarSesion as limpiarSesion, obtenerSesion } from "../services/authSession";
 import DashboardResumen from "./DashboardResumen";
-import CentroAyuda from "./CentroAyuda";
+
+const CrudModule = lazy(() => import("../components/CrudModule"));
+const CheckInOut = lazy(() => import("./CheckInOut"));
+const Reservas = lazy(() => import("./Reservas"));
+const Pagos = lazy(() => import("./Pagos"));
+const Facturacion = lazy(() => import("./Facturacion"));
+const Reportes = lazy(() => import("./Reportes"));
+const Consumos = lazy(() => import("./Consumos"));
+const HistorialTrazabilidad = lazy(() => import("./HistorialTrazabilidad"));
+const CentroAyuda = lazy(() => import("./CentroAyuda"));
 
 const MODULO_POR_VISTA = {
     checkinout: "RECEPCION",
@@ -603,6 +604,13 @@ const Dashboard = () => {
 
                 <main className="p-5 sm:p-8">
 
+                    <Suspense
+                        fallback={
+                            <p role="status" className="text-sm text-slate-600">
+                                Cargando módulo...
+                            </p>
+                        }
+                    >
                     {vista === "ayuda" && <CentroAyuda />}
 
                     {vista === "checkinout" && puedeAcceder(vista) && <CheckInOut />}
@@ -918,6 +926,8 @@ const Dashboard = () => {
 
                     </>
                     )}
+                    </Suspense>
+
                 </main>
 
             </div>

@@ -141,6 +141,11 @@ no produce una puntuación general ni métricas como LCP. El modo **Snapshot**
 sirve para revisar accesibilidad y buenas prácticas del estado visible, no para
 medir rendimiento.
 
+El Dashboard y sus vistas se cargan bajo demanda para que la pantalla de login
+no descargue código de módulos que aún no se usan. `vercel.json` configura una
+caché de un año para los recursos versionados de `/static`; este encabezado se
+aplica al publicar la nueva versión en Vercel.
+
 PageSpeed Insights se debe usar con la URL pública desplegada, en móvil y
 escritorio. No puede acceder a los módulos privados detrás del inicio de sesión;
 para ellos se usa Lighthouse con la sesión abierta. Como referencia de Core Web

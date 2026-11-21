@@ -256,7 +256,7 @@ test('Ayuda está disponible desde el pie del menú para cualquier rol con sesi�
 
   await userEvent.click(await screen.findByRole('button', { name: 'Ayuda' }));
 
-  expect(screen.getByRole('heading', { name: 'Centro de ayuda' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'Centro de ayuda' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Manual de usuario/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Manual del programador/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Contacto y soporte/ })).toBeInTheDocument();

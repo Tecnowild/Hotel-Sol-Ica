@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
 import Login from "./views/Login";
-import Dashboard from "./views/Dashboard";
 import {
     cerrarSesion,
     verificarSesionRemota
 } from "./services/authSession";
+
+const Dashboard = lazy(() => import("./views/Dashboard"));
 
 const RutaProtegida = ({ children }) => {
     const [verificando, setVerificando] = useState(true);
@@ -70,9 +71,19 @@ function App() {
                 <Route
                     path="/dashboard"
                     element={
-                        <RutaProtegida>
-                            <Dashboard />
-                        </RutaProtegida>
+                        <Suspense
+                            fallback={
+                                <main className="flex min-h-screen items-center justify-center bg-slate-100">
+                                    <p role="status" className="text-sm text-slate-600">
+                                        Cargando sistema...
+                                    </p>
+                                </main>
+                            }
+                        >
+                            <RutaProtegida>
+                                <Dashboard />
+                            </RutaProtegida>
+                        </Suspense>
                     }
                 />
 
