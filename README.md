@@ -60,6 +60,9 @@ The backend signs login sessions for eight hours. In production,
 `backend/.env` must define a long, random `SESSION_SECRET` that is stable across
 backend restarts and instances. “Remember me” stores the signed session
 persistently only for its remaining eight-hour lifetime.
+Protected backend requests, including session restoration, also verify that
+the account is still active in Supabase; deactivating an account prevents
+further use of its existing session token.
 
 The login reads each user's active role from `usuario_rol` and applies the
 hotel's role-to-module policy in the backend. Each account must have one active

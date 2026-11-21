@@ -12,11 +12,16 @@ const usuarioDePrueba = {
 
 let respuestaUsuario;
 let respuestaCredencial;
+let ultimaConsulta;
 const crearClienteSimulado = () => ({
     from(tabla) {
+        ultimaConsulta = { tabla, filtros: [] };
         return {
             select() { return this; },
-            eq() { return this; },
+            eq(campo, valor) {
+                ultimaConsulta.filtros.push([campo, valor]);
+                return this;
+            },
             maybeSingle: async () => tabla === "usuario"
                 ? respuestaUsuario
                 : respuestaCredencial
@@ -35,7 +40,24 @@ require.cache[rutaSupabaseAdmin] = {
     }
 };
 
-const { buscarUsuarioPorLogeo } = require("../models/usuarioModel");
+const {
+    buscarUsuarioActivoPorId,
+    buscarUsuarioPorLogeo
+} = require("../models/usuarioModel");
+
+test("only treats an active user row as an active account", async () => {
+    respuestaUsuario = { data: { id_usuario: 9 }, error: null };
+
+    assert.equal(await buscarUsuarioActivoPorId(9), true);
+    assert.equal(ultimaConsulta.tabla, "usuario");
+    assert.deepEqual(ultimaConsulta.filtros, [
+        ["id_usuario", 9],
+        ["estado", "1"]
+    ]);
+
+    respuestaUsuario = { data: null, error: null };
+    assert.equal(await buscarUsuarioActivoPorId(9), false);
+});
 
 test("uses the legacy password while the private credential table is not published", async () => {
     respuestaUsuario = { data: usuarioDePrueba, error: null };

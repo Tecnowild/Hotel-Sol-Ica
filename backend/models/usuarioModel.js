@@ -10,15 +10,23 @@ const esTablaCredencialNoDisponible = (error) =>
         String(error.message || "").includes("usuario_credencial")
     );
 
-const buscarUsuarioPorLogeo = async (logeo) => {
-    let supabasePrivado;
+const obtenerClienteUsuario = () => {
     try {
-        supabasePrivado = obtenerSupabaseAdmin();
+        return {
+            cliente: obtenerSupabaseAdmin(),
+            privado: true
+        };
     } catch (error) {
         if (error.status !== 503) throw error;
+        return {
+            cliente: supabase,
+            privado: false
+        };
     }
+};
 
-    const cliente = supabasePrivado || supabase;
+const buscarUsuarioPorLogeo = async (logeo) => {
+    const { cliente, privado } = obtenerClienteUsuario();
     const { data: usuario, error } = await cliente
         .from("usuario")
         .select(`
@@ -33,13 +41,13 @@ const buscarUsuarioPorLogeo = async (logeo) => {
         .maybeSingle();
 
     if (error) throw error;
-    if (!usuario || !supabasePrivado) {
+    if (!usuario || !privado) {
         return usuario
             ? { ...usuario, clave_hash: null, credencialDisponible: false }
             : null;
     }
 
-    const { data: credencial, error: errorCredencial } = await supabasePrivado
+    const { data: credencial, error: errorCredencial } = await cliente
         .from("usuario_credencial")
         .select("clave_hash")
         .eq("id_usuario", usuario.id_usuario)
@@ -59,6 +67,19 @@ const buscarUsuarioPorLogeo = async (logeo) => {
         clave_hash: credencial?.clave_hash || null,
         credencialDisponible: !errorCredencial
     };
+};
+
+const buscarUsuarioActivoPorId = async (idUsuario) => {
+    const { cliente } = obtenerClienteUsuario();
+    const { data: usuario, error } = await cliente
+        .from("usuario")
+        .select("id_usuario")
+        .eq("id_usuario", idUsuario)
+        .eq("estado", "1")
+        .maybeSingle();
+
+    if (error) throw error;
+    return Boolean(usuario);
 };
 
 const guardarHashClave = async (idUsuario, claveHash) => {
@@ -81,6 +102,7 @@ const guardarHashClave = async (idUsuario, claveHash) => {
 };
 
 module.exports = {
+    buscarUsuarioActivoPorId,
     buscarUsuarioPorLogeo,
     guardarHashClave
 };

@@ -1,7 +1,6 @@
 const {
     autenticarUsuario
 } = require("../services/authService");
-const { verificarTokenSesion } = require("../utils/sessionToken");
 
 const login = async (req, res) => {
 
@@ -52,31 +51,14 @@ const login = async (req, res) => {
 
 const obtenerSesion = (req, res) => {
     res.set("Cache-Control", "no-store");
-    const authorization = req.get("authorization") || "";
-    const [scheme, token] = authorization.split(" ");
-
-    if (scheme !== "Bearer" || !token) {
-        return res.status(401).json({
-            success: false,
-            message: "Se requiere una sesión activa."
-        });
-    }
-
-    try {
-        const sesion = verificarTokenSesion(token);
-        return res.status(200).json({
-            success: true,
-            usuario: sesion.usuario,
-            roles: sesion.roles,
-            modulos: sesion.modulos,
-            expiraEn: sesion.exp * 1000
-        });
-    } catch {
-        return res.status(401).json({
-            success: false,
-            message: "La sesión no es válida o ha expirado."
-        });
-    }
+    const { sesion } = req;
+    return res.status(200).json({
+        success: true,
+        usuario: sesion.usuario,
+        roles: sesion.roles,
+        modulos: sesion.modulos,
+        expiraEn: sesion.exp * 1000
+    });
 };
 
 module.exports = {
