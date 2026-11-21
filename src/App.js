@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 
+import "./services/pwaInstall";
 import Login from "./views/Login";
 import {
     cerrarSesion,

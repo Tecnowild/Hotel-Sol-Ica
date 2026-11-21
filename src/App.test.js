@@ -66,6 +66,10 @@ beforeEach(() => {
 test('el Login ofrece la descarga pública de la aplicación Android', () => {
   render(<App />);
 
+  expect(
+    screen.queryByRole('button', { name: /Instalar aplicación/i })
+  ).not.toBeInTheDocument();
+
   const enlaceDescarga = screen.getByRole('link', {
     name: 'Descargar app para Android (APK)',
   });
@@ -76,6 +80,16 @@ test('el Login ofrece la descarga pública de la aplicación Android', () => {
   );
   expect(enlaceDescarga).toHaveAttribute('target', '_blank');
   expect(enlaceDescarga).toHaveAttribute('rel', 'noopener noreferrer');
+});
+
+test('muestra la opción para instalar la PWA dentro del dashboard', async () => {
+  crearSesion();
+  window.history.pushState({}, '', '/dashboard');
+  render(<App />);
+
+  expect(
+    await screen.findByRole('button', { name: /Instalar aplicación/i })
+  ).toBeInTheDocument();
 });
 
 test('flujo completo: validacion -> error general -> login -> dashboard -> logout -> login', async () => {

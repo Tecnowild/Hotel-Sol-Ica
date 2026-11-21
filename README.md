@@ -26,6 +26,10 @@ se registra únicamente en producción y mediante HTTPS (o `localhost`).
 
 Publica `npm run build` en un dominio HTTPS y luego:
 
+- **Computadora (Chrome/Edge):** después de iniciar sesión, pulsa **Instalar**
+  en la barra superior y confirma la instalación. Después podrás abrir Hotel
+  Sol Ica desde el menú Inicio o Aplicaciones. En Safari para macOS, usa
+  **Archivo > Añadir al Dock**.
 - **Android:** abre el sitio en Chrome y elige **Instalar aplicación** o
   **Agregar a pantalla principal** en el menú.
 - **iPhone/iPad:** abre el sitio en Safari, toca **Compartir** y elige

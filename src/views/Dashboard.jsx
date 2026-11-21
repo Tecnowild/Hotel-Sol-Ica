@@ -2,6 +2,7 @@ import { lazy, Suspense, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import HotelLogo from "../components/HotelLogo";
+import PwaInstallButton from "../components/PwaInstallButton";
 
 import { ENTIDADES } from "../config/entidades";
 
@@ -506,6 +507,8 @@ const Dashboard = () => {
 
 
                     <div className="relative flex items-center gap-3">
+
+                        <PwaInstallButton />
 
                         <button
                             className="
