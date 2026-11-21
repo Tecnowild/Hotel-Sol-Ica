@@ -16,6 +16,29 @@ equipo.
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
+## PWA y aplicación móvil
+
+La compilación de producción incluye un service worker que guarda los recursos
+estáticos de la aplicación para abrir su estructura sin conexión. No se
+almacenan respuestas de la API ni datos de huéspedes o sesiones en la caché;
+las funciones que necesitan el backend requieren conexión. El service worker
+se registra únicamente en producción y mediante HTTPS (o `localhost`).
+
+Publica `npm run build` en un dominio HTTPS y luego:
+
+- **Android:** abre el sitio en Chrome y elige **Instalar aplicación** o
+  **Agregar a pantalla principal** en el menú.
+- **iPhone/iPad:** abre el sitio en Safari, toca **Compartir** y elige
+  **Agregar a pantalla de inicio**. iOS no instala archivos APK.
+- **APK Android (WebIntoApp):** primero publica el sitio y usa su URL HTTPS
+  pública en WebIntoApp para crear el paquete Android. Revisa permisos,
+  privacidad, firma y política de publicación antes de distribuirlo. No subas
+  archivos `.env`, claves de Supabase ni credenciales al servicio. Esta
+  conversión requiere que el sitio publicado y su API sigan disponibles.
+
+La instalación PWA desde el navegador no requiere convertir ni subir el
+proyecto a un servicio externo.
+
 ## Available Scripts
 
 In the project directory, you can run:

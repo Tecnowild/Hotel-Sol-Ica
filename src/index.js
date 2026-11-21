@@ -59,6 +59,16 @@ const root = ReactDOM.createRoot(
 
 root.render(<App />);
 
+if (process.env.NODE_ENV === "production" && "serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+        navigator.serviceWorker
+            .register(`${process.env.PUBLIC_URL}/service-worker.js`)
+            .catch((error) => {
+                console.error("No se pudo registrar el service worker:", error);
+            });
+    });
+}
+
 // LaRecovery queda limpia una vez que la app monta
 // sin errores de mutación del DOM.
 window.setTimeout(() => {
