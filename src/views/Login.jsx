@@ -770,6 +770,42 @@ const Login = () => {
 
                         </form>
 
+                        <div className="mt-4">
+                            <a
+                                href="https://drive.google.com/uc?export=download&id=1ZZXXRkW2tPVTl2rkziQtpKn05sm2GrA5"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label="Descargar app para Android (APK)"
+                                className="
+                                    flex
+                                    w-full
+                                    items-center
+                                    justify-center
+                                    gap-2
+                                    rounded-xl
+                                    border
+                                    border-blue-200
+                                    bg-blue-50
+                                    px-5
+                                    py-3.5
+                                    text-sm
+                                    font-semibold
+                                    text-blue-900
+                                    transition-colors
+                                    hover:bg-blue-100
+                                    focus-visible:outline
+                                    focus-visible:outline-2
+                                    focus-visible:outline-offset-2
+                                    focus-visible:outline-blue-800
+                                "
+                            >
+                                <i className="bi bi-download" aria-hidden="true"></i>
+                                Descargar app para Android (APK)
+                            </a>
+                            <p className="mt-2 text-center text-xs text-gray-500">
+                                Google Drive puede pedir confirmar la descarga del APK.
+                            </p>
+                        </div>
 
 
                         {/* Información */}

@@ -63,6 +63,21 @@ beforeEach(() => {
   window.history.pushState({}, '', '/login');
 });
 
+test('el Login ofrece la descarga pública de la aplicación Android', () => {
+  render(<App />);
+
+  const enlaceDescarga = screen.getByRole('link', {
+    name: 'Descargar app para Android (APK)',
+  });
+
+  expect(enlaceDescarga).toHaveAttribute(
+    'href',
+    'https://drive.google.com/uc?export=download&id=1ZZXXRkW2tPVTl2rkziQtpKn05sm2GrA5'
+  );
+  expect(enlaceDescarga).toHaveAttribute('target', '_blank');
+  expect(enlaceDescarga).toHaveAttribute('rel', 'noopener noreferrer');
+});
+
 test('flujo completo: validacion -> error general -> login -> dashboard -> logout -> login', async () => {
   global.fetch = mockFail();
   render(<App />);

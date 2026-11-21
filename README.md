@@ -36,6 +36,10 @@ Publica `npm run build` en un dominio HTTPS y luego:
   archivos `.env`, claves de Supabase ni credenciales al servicio. Esta
   conversión requiere que el sitio publicado y su API sigan disponibles.
 
+El Login también ofrece un enlace para descargar el APK Android desde Google
+Drive. El archivo debe permitir acceso de lector a cualquier persona con el
+enlace; Drive puede mostrar un aviso de seguridad antes de descargarlo.
+
 La instalación PWA desde el navegador no requiere convertir ni subir el
 proyecto a un servicio externo.
 
