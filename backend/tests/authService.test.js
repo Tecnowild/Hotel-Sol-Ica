@@ -3,29 +3,33 @@ const assert = require("node:assert/strict");
 const { hashearClave } = require("../utils/password");
 const hashCredencial = hashearClave("clave-segura-123");
 let usarClaveHeredada = false;
+let usuarioInactivo = false;
 let hashCalls = 0;
 
 const usuarioModelo = {
-    buscarUsuarioPorLogeo: async () => usarClaveHeredada
-        ? {
-            id_usuario: 9,
-            id_tipousuario: 1,
-            id_empleado: 3,
-            logeo: "recepcion",
-            clave: "clave-heredada",
-            clave_hash: null,
-            credencialDisponible: false,
-            estado: "1"
-        }
-        : {
-            id_usuario: 9,
-            id_tipousuario: 1,
-            id_empleado: 3,
-            logeo: "recepcion",
-            clave: "",
-            clave_hash: await hashCredencial,
-            estado: "1"
-        },
+    buscarUsuarioPorLogeo: async () => {
+        const usuario = usarClaveHeredada
+            ? {
+                id_usuario: 9,
+                id_tipousuario: 1,
+                id_empleado: 3,
+                logeo: "recepcion",
+                clave: "clave-heredada",
+                clave_hash: null,
+                credencialDisponible: false,
+                estado: "1"
+            }
+            : {
+                id_usuario: 9,
+                id_tipousuario: 1,
+                id_empleado: 3,
+                logeo: "recepcion",
+                clave: "",
+                clave_hash: await hashCredencial,
+                estado: "1"
+            };
+        return usuarioInactivo ? { ...usuario, estado: "0" } : usuario;
+    },
     guardarHashClave: async () => { hashCalls += 1; }
 };
 
@@ -56,6 +60,19 @@ test("rejects passwords that do not match the stored hash", async () => {
 
     assert.equal(resultado.success, false);
     assert.equal(resultado.message, "El usuario o la contraseña son incorrectos.");
+});
+
+test("does not reveal whether an account is inactive during login", async () => {
+    usuarioInactivo = true;
+
+    try {
+        const resultado = await autenticarUsuario("recepcion", "clave-segura-123");
+
+        assert.equal(resultado.success, false);
+        assert.equal(resultado.message, "El usuario o la contraseña son incorrectos.");
+    } finally {
+        usuarioInactivo = false;
+    }
 });
 
 test("authenticates with the legacy password without trying to hash it before migration", async () => {

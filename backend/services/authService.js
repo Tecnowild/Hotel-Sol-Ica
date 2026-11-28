@@ -21,7 +21,7 @@ const autenticarUsuario = async (logeo, clave) => {
     if (String(usuario.estado) !== "1") {
         return {
             success: false,
-            message: "El usuario se encuentra inactivo."
+            message: "El usuario o la contraseña son incorrectos."
         };
     }
 
