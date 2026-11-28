@@ -7,20 +7,27 @@ const login = async (req, res) => {
     try {
         res.set("Cache-Control", "no-store");
 
-        const { logeo, clave } = req.body;
+        const { logeo, clave } = req.body || {};
 
         // Validación
-        if (!logeo || !logeo.trim()) {
+        if (typeof logeo !== "string" || !logeo.trim()) {
             return res.status(400).json({
                 success: false,
                 message: "El usuario es obligatorio."
             });
         }
 
-        if (!clave || !clave.trim()) {
+        if (typeof clave !== "string" || !clave.trim()) {
             return res.status(400).json({
                 success: false,
                 message: "La contraseña es obligatoria."
+            });
+        }
+
+        if (logeo.length > 128 || clave.length > 1024) {
+            return res.status(400).json({
+                success: false,
+                message: "El usuario o la contraseña exceden el tamaño permitido."
             });
         }
 

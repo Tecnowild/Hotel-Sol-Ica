@@ -64,6 +64,18 @@ The backend requires `backend/.env` with valid Supabase settings. To run only
 one service, use `npm run start:backend` or `npm run start:frontend` in the
 project directory.
 
+The API uses Helmet security headers, limits JSON request bodies to 100 KB,
+and allows cross-origin browser requests only from `CORS_ORIGINS` (a
+comma-separated list). Development defaults to `http://localhost:3000`;
+production has no cross-origin origins enabled by default, which still permits
+same-origin deployment. Failed login attempts are limited to five per IP per
+15 minutes, and document lookups to 20 per IP per minute. If the backend is
+behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact number of trusted
+proxy hops so IP-based limits use the client address; do not trust arbitrary
+forwarded headers. The default rate-limit store is per process; deployments
+with multiple backend instances need a shared rate-limit store for a global
+limit.
+
 The backend signs login sessions for eight hours. In production,
 `backend/.env` must define a long, random `SESSION_SECRET` that is stable across
 backend restarts and instances. “Remember me” stores the signed session
@@ -87,6 +99,15 @@ connection so the current hotel workflows keep working. Navigation and session
 claims enforce the application role policy, but they do not prevent direct
 Supabase requests if the current anonymous/RLS policies allow them. Database
 policies must also be reviewed for data-level enforcement.
+
+The current frontend sends Supabase requests directly with the publishable
+key, while staff sessions are signed by the Express backend and are not
+Supabase Auth sessions. As a result, Supabase RLS policies cannot safely use
+the app's backend roles as `auth.uid()` claims. Before tightening business-table
+RLS, first move those browser queries behind authenticated backend routes or
+integrate Supabase Auth, then validate each table's required operations and
+access rules against a staging database. Do not apply a blanket RLS migration:
+it can either break existing hotel workflows or leave broad anonymous access.
 
 The staff Users CRUD uses authenticated backend routes and a server-only
 `SUPABASE_SERVICE_ROLE_KEY`; never expose this key in frontend variables or
